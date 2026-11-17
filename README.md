@@ -22,6 +22,7 @@ and leave it running.
 - [Step 5: Connect it to your WiFi](#step-5-connect-it-to-your-wifi)
 - [Step 6 (optional): Discord alerts](#step-6-optional-discord-alerts)
 - [The web dashboard](#the-web-dashboard)
+- [Updating the firmware](#updating-the-firmware)
 - [Using it](#using-it)
 - [The four screens](#the-four-screens)
 - [How outages are classified](#how-outages-are-classified)
@@ -233,6 +234,8 @@ browser on any phone or computer on the same network.
   seconds. Handy as evidence when you complain to your ISP.
 - **Settings:** change the Discord webhook, timezone, ping targets and the
   admin password. The monitor restarts to apply them.
+- **Update firmware:** install a new version from your browser, with no USB
+  cable. See [Updating the firmware](#updating-the-firmware).
 
 If `uptime.local` does not open (some Android phones and locked-down
 networks do not support that kind of name), use the monitor's IP address
@@ -245,6 +248,9 @@ Viewing the dashboard, the log and the CSV never needs a password. Without
 an admin password, anyone on your WiFi can also open Settings and change
 them. Set an admin password (in the setup page or in Settings) to lock
 Settings behind a login.
+
+Updating the firmware from the dashboard always needs the admin password.
+Until one is set, that page is switched off completely.
 
 - Only a salted hash of the password is stored on the device (PBKDF2 with
   SHA-256). The password itself cannot be read back.
@@ -262,6 +268,46 @@ it refuses requests that come from other websites.
 
 <!-- PHOTO: screenshot of the web dashboard -->
 ![Web dashboard](docs/photos/dashboard.png)
+
+## Updating the firmware
+
+After the first flash you never need the USB cable again. New versions can
+be installed from the dashboard.
+
+1. Set an admin password if you have not yet (dashboard > **Settings**).
+   Updating is switched off until one exists.
+2. Open the dashboard and click **Update firmware**. The page shows the
+   version you are running and your board's build name.
+3. Follow the link to the
+   [releases page](https://github.com/TradeSolana/uptime-sentinel/releases)
+   and download the file for your board that ends in `-update.bin`, for
+   example `uptime-sentinel-tdisplay-update.bin`.
+4. Choose that file on the update page and click **Upload and install**.
+5. Wait about a minute. The monitor restarts on the new version.
+
+Your WiFi details, webhook, other settings, admin password and the outage
+log are all kept. They live in separate areas of the flash memory that an
+update does not touch.
+
+The file is checked before it is used, and the monitor refuses:
+
+- anything that is not an ESP32 application image, including the `-full.bin`
+  file meant for USB flashing;
+- firmware built for a different chip or a different board;
+- a damaged or incomplete download (the image's checksum and SHA-256 hash
+  must match).
+
+The new firmware is written to a spare slot while the old one keeps running,
+and the monitor only switches over once every check has passed. A refused or
+interrupted upload leaves it running exactly what it had.
+
+**Every build supports this**, including the 4 MB boards. The firmware is
+about 1.1 MB and each board has two slots for it: 1.9 MB each on 4 MB
+boards, 3 MB or more on 16 MB boards.
+
+If an update ever leaves a board that will not start, flash it again over
+USB as in Steps 2 to 4. That always works, because the USB bootloader is
+never modified.
 
 ## Using it
 
@@ -408,6 +454,8 @@ Good to know:
 | Times in the log are wrong | Pick your timezone on the dashboard's Settings page. |
 | It says SLOW all the time | One of the ping targets may be slow or blocked from your network. Change the targets on the Settings page. |
 | Stuck showing OFFLINE with ROUTER `--` | The board has lost WiFi. Move it closer to the router. |
+| The update page says it is switched off | Set an admin password in Settings first. |
+| The update page refuses my file | Use the file ending in `-update.bin` whose name contains your board's build name, shown on the update page. Download it again if it says the file is damaged. |
 | I forgot the admin password | Hold the wipe gesture for 5 seconds, then run the setup again. The outage log is kept. |
 | I want to start over | Hold the wipe gesture for 5 seconds (see [Using it](#using-it)). |
 
@@ -474,7 +522,7 @@ real hardware.
 | `src/monitor.cpp` | Outage, SLOW and DNS logic; latency history |
 | `src/storage.cpp` | Outage log and power heartbeat on LittleFS |
 | `src/logview.cpp` | The log as displayed, with the ongoing event on top |
-| `src/web.cpp` | Web dashboard, JSON API, CSV export, settings page, admin login |
+| `src/web.cpp` | Web dashboard, JSON API, CSV export, settings page, admin login, firmware update |
 | `src/html.cpp` | Page styling and form fields shared with the setup portal |
 | `src/stats.cpp` | Uptime percentages (ISP outages only) |
 | `src/timekeeper.cpp` | NTP, timezone, time formatting |

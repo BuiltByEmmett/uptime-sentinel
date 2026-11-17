@@ -43,8 +43,8 @@ bool validIp(const String &text);
 bool validTz(const String &text);
 bool validHook(const String &text);
 
-// Optional admin password for the dashboard's Settings page. Only a random
-// salt and a PBKDF2-HMAC-SHA256 hash are stored.
+// Optional admin password for the dashboard's Settings and firmware update
+// pages. Only a random salt and a PBKDF2-HMAC-SHA256 hash are stored.
 constexpr size_t ADMIN_MIN_LEN = 8;
 constexpr size_t ADMIN_MAX_LEN = 64;
 bool hasAdmin();

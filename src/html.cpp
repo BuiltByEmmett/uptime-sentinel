@@ -16,7 +16,7 @@ h2{font-size:13px;color:#9AA4AF;font-weight:normal;letter-spacing:1px;margin:28p
 border-bottom:1px solid #1C232B;padding-bottom:6px}
 p{color:#9AA4AF;font-size:13px;line-height:1.5}
 label{display:block;color:#9AA4AF;font-size:13px;margin:18px 0 6px}
-select,input[type=text],input[type=password],input[type=url]{width:100%;box-sizing:border-box;
+select,input[type=text],input[type=password],input[type=url],input[type=file]{width:100%;box-sizing:border-box;
 padding:12px;background:#1C232B;color:#E8EDF2;border:1px solid #2A333D;border-radius:6px;
 font:inherit;font-size:16px}
 button{margin-top:24px;width:100%;padding:14px;background:#3DDC84;color:#0B0E11;border:0;
@@ -119,7 +119,9 @@ String adminFields() {
   if (settings::hasAdmin()) {
     out += F("<p>An admin password is set. Leave both boxes empty to keep it.</p>");
   } else {
-    out += F("<p>Optional. When one is set, it is needed to open the Settings page.</p>");
+    out += F("<p>Optional. When one is set, it is needed to open Settings and to update "
+             "the firmware. Updating from the dashboard stays switched off until a "
+             "password is set.</p>");
   }
   out += F("<label for=\"admin\">New admin password (8 characters or more)</label>"
            "<input id=\"admin\" name=\"admin\" type=\"password\" maxlength=\"64\" "

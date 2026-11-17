@@ -29,6 +29,16 @@ constexpr uint32_t FIRST_JOIN_TIMEOUT_MS = 30000;
 
 constexpr char AP_NAME[] = "Uptime Sentinel";
 constexpr char MDNS_NAME[] = "uptime";      // http://uptime.local
+constexpr char RELEASES_URL[] = "https://github.com/TradeSolana/uptime-sentinel/releases";
+
+// Which platformio.ini environment this firmware was built for. Every image
+// carries BOARD_MARKER, and the update page refuses a file without the
+// marker of the board it is running on.
+#ifndef BOARD_ENV
+#define BOARD_ENV "custom"
+#endif
+constexpr char BOARD[] = BOARD_ENV;
+constexpr char BOARD_MARKER[] = "UPTIME-SENTINEL-BOARD:" BOARD_ENV ";";
 constexpr char VERSION[] = "1.1.0";
 }  // namespace cfg
 

@@ -2,6 +2,7 @@
 // Wires the modules together; the logic lives in the files named after it.
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_ota_ops.h>
 
 #include "alerts.h"
 #include "buttons.h"
@@ -197,7 +198,9 @@ void serviceSerial() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.printf("\n[boot] uptime-sentinel %s\n", cfg::VERSION);
+  const esp_partition_t *slot = esp_ota_get_running_partition();
+  Serial.printf("\n[boot] uptime-sentinel %s (%s, slot %s)\n", cfg::VERSION, cfg::BOARD,
+                slot ? slot->label : "?");
 
   buttons::begin();
   display::begin();

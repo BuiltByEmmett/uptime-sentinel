@@ -1,15 +1,20 @@
 #include "web.h"
 
 #include <ESPmDNS.h>
+#include <Update.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <esp_app_format.h>
+#include <esp_ota_ops.h>
 #include <esp_system.h>
 #include <math.h>
 
 #include "config.h"
+#include "display.h"
 #include "html.h"
 #include "logview.h"
 #include "monitor.h"
+#include "screens.h"
 #include "settings.h"
 #include "stats.h"
 #include "timekeeper.h"
@@ -29,6 +34,28 @@ String sessionToken;
 uint32_t sessionSeenAt = 0;
 uint8_t loginFails = 0;
 uint32_t loginLockedUntil = 0;
+
+// A firmware upload in progress. The image is written to the spare app slot
+// as it arrives; the slot only becomes the one to boot from after every
+// check has passed, so a refused or interrupted upload changes nothing.
+constexpr size_t IMAGE_HEAD_LEN = 36;         // image header, first segment header, magic word
+constexpr size_t IMAGE_CHIP_OFFSET = 12;      // esp_image_header_t::chip_id
+constexpr size_t IMAGE_DESC_OFFSET = 32;      // esp_app_desc_t::magic_word
+constexpr size_t MARKER_LEN = sizeof(cfg::BOARD_MARKER) - 1;
+struct Upload {
+  bool started = false;
+  bool permitted = false;
+  bool failed = false;
+  bool markerFound = false;
+  String error;
+  uint8_t head[IMAGE_HEAD_LEN];
+  size_t headLen = 0;
+  uint8_t tail[MARKER_LEN];  // end of the previous chunk, for a marker split across two
+  size_t tailLen = 0;
+  size_t received = 0;
+  size_t shownKb = 0;
+};
+Upload up;
 
 const char DASHBOARD[] PROGMEM = R"HTML(
 <div id="state" class="big m">...</div><div id="sub" class="m" style="font-size:13px">&nbsp;</div>
@@ -51,7 +78,8 @@ const char DASHBOARD[] PROGMEM = R"HTML(
 <h2>OUTAGE LOG</h2>
 <table><thead><tr><th>Started</th><th>Lasted</th><th>Cause</th></tr></thead>
 <tbody id="log"></tbody></table>
-<p><a href="/log.csv">Download log (CSV)</a> &middot; <a href="/settings">Settings</a></p>
+<p><a href="/log.csv">Download log (CSV)</a> &middot; <a href="/settings">Settings</a>
+&middot; <a href="/update">Update firmware</a></p>
 <p id="foot"></p>
 <script>
 const $=i=>document.getElementById(i);
@@ -91,7 +119,7 @@ status();log();setInterval(status,2000);setInterval(log,10000);
 // Only answer requests addressed to this device by its own name or IP, and
 // only accept form posts that came from our own pages. Stops other websites
 // from reaching the monitor through the visitor's browser.
-bool allowed(bool isPost) {
+bool requestOk(bool isPost) {
   String host = server.hostHeader();
   host.toLowerCase();
   String mdns = String(cfg::MDNS_NAME) + ".local";
@@ -103,7 +131,11 @@ bool allowed(bool isPost) {
     if (origin.length()) originOk = origin == "http://" + host;
     else if (referer.length()) originOk = referer.startsWith("http://" + host + "/");
   }
-  if (hostOk && originOk) return true;
+  return hostOk && originOk;
+}
+
+bool allowed(bool isPost) {
+  if (requestOk(isPost)) return true;
   server.send(403, "text/plain", "Forbidden");
   return false;
 }
@@ -226,6 +258,8 @@ void handleStatus() {
   json += ",\"rssi\":" + String(WiFi.RSSI());
   json += ",\"version\":\"";
   json += cfg::VERSION;
+  json += "\",\"board\":\"";
+  json += cfg::BOARD;
   json += "\",\"history\":[";
   size_t n = monitor::historyCount() < cfg::ROUNDS_5MIN ? monitor::historyCount()
                                                          : cfg::ROUNDS_5MIN;
@@ -364,6 +398,186 @@ void handleLogout() {
   redirect("/");
 }
 
+bool canUpdate() { return esp_ota_get_next_update_partition(nullptr) != nullptr; }
+
+void sendUpdate(const String &notice) {
+  String page = html::pageStart("Uptime Sentinel firmware update");
+  page += F("<p><a href=\"/\">&larr; Back to the dashboard</a></p>");
+  if (notice.length()) page += "<p class=\"warn\">" + html::escape(notice) + "</p>";
+  page += F("<h2>UPDATE FIRMWARE</h2><div class=\"grid\"><div class=\"cell\">VERSION<b>");
+  page += cfg::VERSION;
+  page += F("</b></div><div class=\"cell\" style=\"grid-column:span 2\">BOARD<b>");
+  page += cfg::BOARD;
+  page += F("</b></div></div><p>New versions are published on the <a href=\"");
+  page += cfg::RELEASES_URL;
+  page += F("\" target=\"_blank\" rel=\"noopener\">GitHub releases page</a>. Download the "
+            "file named <b>uptime-sentinel-");
+  page += cfg::BOARD;
+  page += F("-update.bin</b> and choose it here.</p>");
+  if (!canUpdate()) {
+    page += F("<p class=\"warn\">This build has no spare firmware slot, so it cannot be "
+              "updated from the dashboard. Flash it over USB instead.</p>");
+  } else if (!settings::hasAdmin()) {
+    page += F("<p class=\"warn\">Updating from the dashboard is switched off until an admin "
+              "password is set.</p><p><a href=\"/settings\">Set one in Settings</a>, then "
+              "come back here.</p>");
+  } else {
+    page += F("<form method=\"post\" action=\"/update\" enctype=\"multipart/form-data\">"
+              "<label for=\"firmware\">Firmware file (.bin)</label>"
+              "<input id=\"firmware\" name=\"firmware\" type=\"file\" accept=\".bin\" required>"
+              "<button type=\"submit\" onclick=\"setTimeout(()=>{this.disabled=true;"
+              "this.textContent='Uploading, please wait...'},0)\">Upload and install</button>"
+              "</form><p>The upload takes up to a minute. The file is checked before it "
+              "is used: a damaged file, or one built for a different board, is refused "
+              "and the monitor keeps running what it has. Your settings and the outage "
+              "log are kept. Do not unplug the monitor while it updates.</p>");
+  }
+  page += FPSTR(html::PAGE_END);
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "text/html", page);
+}
+
+void handleUpdateGet() {
+  if (!allowed(false)) return;
+  if (canUpdate() && !requireAdmin("/update")) return;
+  sendUpdate("");
+}
+
+void failUpload(const String &why) {
+  if (up.failed) return;
+  up.failed = true;
+  up.error = why;
+  Update.abort();
+}
+
+// The first bytes say what kind of file this is: an ESP application image,
+// for this chip, and an application rather than a bootloader or a full
+// flash image.
+void checkImageHead() {
+  esp_image_header_t running;
+  const esp_partition_t *part = esp_ota_get_running_partition();
+  uint16_t chip;
+  uint32_t descMagic;
+  memcpy(&chip, up.head + IMAGE_CHIP_OFFSET, sizeof(chip));
+  memcpy(&descMagic, up.head + IMAGE_DESC_OFFSET, sizeof(descMagic));
+  if (up.head[0] != ESP_IMAGE_HEADER_MAGIC || descMagic != ESP_APP_DESC_MAGIC_WORD) {
+    failUpload(String("That is not a firmware update file. Choose the file named "
+                      "uptime-sentinel-") + cfg::BOARD + "-update.bin.");
+  } else if (!part || esp_partition_read(part, 0, &running, sizeof(running)) != ESP_OK ||
+             chip != static_cast<uint16_t>(running.chip_id)) {
+    failUpload("That firmware is for a different kind of ESP32 chip.");
+  }
+}
+
+void scanForMarker(const uint8_t *data, size_t len) {
+  if (up.markerFound) return;
+  uint8_t join[2 * MARKER_LEN];
+  size_t take = len < MARKER_LEN - 1 ? len : MARKER_LEN - 1;
+  memcpy(join, up.tail, up.tailLen);
+  memcpy(join + up.tailLen, data, take);
+  size_t joined = up.tailLen + take;
+  if (memmem(join, joined, cfg::BOARD_MARKER, MARKER_LEN) ||
+      memmem(data, len, cfg::BOARD_MARKER, MARKER_LEN)) {
+    up.markerFound = true;
+    return;
+  }
+  if (len >= MARKER_LEN - 1) {
+    up.tailLen = MARKER_LEN - 1;
+    memcpy(up.tail, data + len - up.tailLen, up.tailLen);
+  } else {
+    // A short chunk: `join` already holds the old tail followed by all of it.
+    up.tailLen = joined < MARKER_LEN - 1 ? joined : MARKER_LEN - 1;
+    memmove(up.tail, join + joined - up.tailLen, up.tailLen);
+  }
+}
+
+// Called by the web server as each piece of the uploaded file arrives,
+// before handleUpdatePost() runs.
+void handleUpdateData() {
+  HTTPUpload &part = server.upload();
+  if (part.status == UPLOAD_FILE_START) {
+    up = Upload();
+    up.started = true;
+    up.permitted = requestOk(true) && canUpdate() && settings::hasAdmin() && sessionValid();
+    if (!up.permitted) return;
+    Serial.println("[update] receiving firmware");
+    display::message("UPDATE", "Receiving firmware...", "", "Do not unplug");
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
+      failUpload(String("Could not start the update (") + Update.errorString() + ").");
+    }
+  } else if (part.status == UPLOAD_FILE_WRITE) {
+    if (!up.permitted || up.failed) return;
+    if (up.headLen < IMAGE_HEAD_LEN) {
+      size_t take = IMAGE_HEAD_LEN - up.headLen;
+      if (take > part.currentSize) take = part.currentSize;
+      memcpy(up.head + up.headLen, part.buf, take);
+      up.headLen += take;
+      if (up.headLen == IMAGE_HEAD_LEN) checkImageHead();
+      if (up.failed) return;
+    }
+    scanForMarker(part.buf, part.currentSize);
+    if (Update.write(part.buf, part.currentSize) != part.currentSize) {
+      failUpload(String("Could not store the firmware (") + Update.errorString() + ").");
+      return;
+    }
+    up.received += part.currentSize;
+    if (up.received / 1024 >= up.shownKb + 64) {
+      up.shownKb = up.received / 1024;
+      char line[24];
+      snprintf(line, sizeof(line), "%u KB", static_cast<unsigned>(up.shownKb));
+      display::message("UPDATE", "Receiving firmware...", line, "Do not unplug");
+    }
+  } else if (part.status == UPLOAD_FILE_ABORTED) {
+    if (up.permitted) failUpload("The upload was interrupted.");
+  }
+}
+
+void handleUpdatePost() {
+  Upload done = up;
+  up = Upload();
+  bool refused = !requestOk(true) || !canUpdate() || !settings::hasAdmin() || !sessionValid();
+  if (refused) {
+    Update.abort();
+    if (!allowed(true)) return;
+    if (canUpdate() && !requireAdmin("/update")) return;
+    sendUpdate("");
+    return;
+  }
+
+  String error = done.error;
+  if (!done.started || !done.permitted) {
+    error = "No file arrived. Choose a file and try again.";
+  } else if (!done.failed) {
+    if (done.headLen < IMAGE_HEAD_LEN) {
+      error = "No file was chosen, or it was empty.";
+    } else if (!done.markerFound) {
+      error = String("That firmware was not built for this board. This one needs "
+                     "uptime-sentinel-") + cfg::BOARD + "-update.bin.";
+    } else if (!Update.end(true)) {
+      // end() checks the image's own checksum and SHA-256 before switching to it.
+      error = String("The file is damaged or incomplete (") + Update.errorString() +
+              "). Download it again.";
+    }
+  }
+  if (error.length()) {
+    Update.abort();
+    Serial.printf("[update] refused: %s\n", error.c_str());
+    screens::show();
+    sendUpdate(error);
+    return;
+  }
+
+  Serial.printf("[update] %u bytes installed; restarting\n", static_cast<unsigned>(done.received));
+  display::message("UPDATE", "Firmware installed.", "Restarting...");
+  String page = html::pageStart("Uptime Sentinel firmware update");
+  page += F("<p>The new firmware is installed. The monitor is restarting; the dashboard will "
+            "be back in about 20 seconds.</p><p><a href=\"/\">Back to the dashboard</a></p>");
+  page += FPSTR(html::PAGE_END);
+  server.send(200, "text/html", page);
+  restartPending = true;
+  restartAt = millis() + 1500;
+}
+
 void sendSettings(const String &notice) {
   const settings::Config &conf = settings::get();
   String page = html::pageStart("Uptime Sentinel settings");
@@ -447,6 +661,8 @@ void begin() {
   server.on("/login", HTTP_GET, handleLoginGet);
   server.on("/login", HTTP_POST, handleLoginPost);
   server.on("/logout", HTTP_GET, handleLogout);
+  server.on("/update", HTTP_GET, handleUpdateGet);
+  server.on("/update", HTTP_POST, handleUpdatePost, handleUpdateData);
   server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
   server.begin();
 }
