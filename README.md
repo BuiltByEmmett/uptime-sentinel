@@ -21,6 +21,7 @@ and leave it running.
 - [Step 4: Flash the board](#step-4-flash-the-board)
 - [Step 5: Connect it to your WiFi](#step-5-connect-it-to-your-wifi)
 - [Step 6 (optional): Discord alerts](#step-6-optional-discord-alerts)
+- [The web dashboard](#the-web-dashboard)
 - [Using it](#using-it)
 - [The four screens](#the-four-screens)
 - [How outages are classified](#how-outages-are-classified)
@@ -37,10 +38,16 @@ and leave it running.
   **WiFi problem** (router does not answer).
 - Waits for three failed rounds in a row before calling it an outage, so one
   lost packet never raises a false alarm.
-- Saves every outage (start time, duration, cause) to the board's flash
+- Notices when the connection is up but bad: **SLOW** (heavy packet loss or
+  latency far above normal) and **DNS** (the internet is reachable but name
+  lookups fail, which is what "the internet is down" often really is).
+- Logs **POWER** gaps, so you can tell a power cut from an ISP outage.
+- Saves every event (start time, duration, cause) to the board's flash
   memory. The last 200 are kept and survive power cuts.
 - Shows live status, a latency graph, the outage log and uptime percentages
   on four screens.
+- Serves a **web dashboard** on your network at `http://uptime.local`, with
+  the full log, a CSV download and a settings page.
 - Optionally posts one Discord message when an ISP outage ends:
   `Internet was down 1m 12s (ISP side). Back at 14:03.`
 - Set up from your phone. Your WiFi password and webhook URL are stored only
@@ -175,7 +182,10 @@ If the upload cannot find or connect to the board:
 4. Pick your home WiFi from the list and type its password.
 5. Optional: paste a Discord webhook URL (see Step 6). You can leave it
    empty.
-6. Tap **Save and connect**.
+6. Pick your **timezone**, so the log shows your local time.
+7. Leave the two **ping targets** as they are (`1.1.1.1` and `8.8.8.8`)
+   unless you have a reason to change them. They must be IP addresses.
+8. Tap **Save and connect**.
 
 The board restarts, joins your WiFi and starts monitoring. If the password
 was wrong, the setup network comes back after about 30 seconds so you can
@@ -202,8 +212,37 @@ time an ISP outage ends. WiFi-only problems never send a message.
 Treat the webhook URL like a password: anyone who has it can post to that
 channel. It is stored only on the device.
 
-To add or change the webhook later, wipe the settings (below) and run the
-setup again.
+To add, change or remove the webhook later, use the Settings link on the web
+dashboard (below). No need to redo the WiFi setup.
+
+## The web dashboard
+
+Once the monitor is on your WiFi, open **<http://uptime.local>** in a
+browser on any phone or computer on the same network.
+
+- **Live status:** ONLINE / OFFLINE / SLOW / NO DNS, latency, packet loss,
+  jitter, a five-minute graph, and each target's reply time. It refreshes
+  every two seconds.
+- **Uptime:** the same figures as the UPTIME screen.
+- **Outage log:** all 200 entries, with anything still in progress at the
+  top.
+- **Download log (CSV):** every entry with full date, time and duration in
+  seconds. Handy as evidence when you complain to your ISP.
+- **Settings:** change the Discord webhook, timezone and ping targets. The
+  monitor restarts to apply them.
+
+If `uptime.local` does not open (some Android phones and locked-down
+networks do not support that kind of name), use the monitor's IP address
+instead. It is shown in the header of the UPTIME screen, and in the serial
+log at start-up.
+
+The dashboard has no password. Anyone on your WiFi can view it and change
+its settings, so do not expose it to the internet. It never shows the saved
+webhook URL or your WiFi password, and it refuses requests that come from
+other websites.
+
+<!-- PHOTO: screenshot of the web dashboard -->
+![Web dashboard](docs/photos/dashboard.png)
 
 ## Using it
 
@@ -220,7 +259,8 @@ and a longer press (about 1 second) is the screen action.
 5 minutes and the last hour; on the OUTAGES screen it scrolls four rows down
 (and wraps back to the newest).
 
-**Wiping settings** erases the saved WiFi and webhook and returns to the
+**Wiping settings** erases the saved WiFi, webhook, timezone and ping
+targets and returns to the
 setup screen. A countdown appears; let go to cancel. The outage log is kept.
 Press the buttons after the board has started: holding BOOT while plugging
 in puts an ESP32 into its bootloader instead.
@@ -231,9 +271,9 @@ Only the parts of the screen that changed are redrawn, so nothing flickers.
 
 ### 1. STATUS
 
-A large ONLINE (green) or OFFLINE (orange), the current internet latency,
-packet loss over the last five minutes, and the latest reply time from the
-router, `1.1.1.1` and `8.8.8.8`.
+A large ONLINE (green), OFFLINE (orange), or SLOW / NO DNS (yellow), the
+current internet latency, packet loss over the last five minutes, and the
+latest reply time from the router and the two ping targets.
 
 <!-- PHOTO: STATUS screen -->
 ![STATUS screen](docs/photos/screen-status.jpg)
@@ -249,8 +289,10 @@ for the range are along the bottom.
 
 ### 3. OUTAGES
 
-The outage log, newest first: when it started, how long it lasted, and an
-orange `ISP` or grey `WIFI` tag.
+The log, newest first: when it started, how long it lasted, and a tag.
+`ISP` is orange, `SLOW` and `DNS` are yellow, `WIFI` and `POWER` are grey.
+Anything still in progress sits on the top row with its duration counting
+up.
 
 <!-- PHOTO: OUTAGES screen -->
 ![OUTAGES screen](docs/photos/screen-outages.jpg)
@@ -258,7 +300,8 @@ orange `ISP` or grey `WIFI` tag.
 ### 4. UPTIME
 
 Uptime over the last 24 hours and 7 days, the number of ISP outages, the
-longest one, and how long the monitor has been watching.
+longest one, and how long the monitor has been watching. The header also
+shows the monitor's IP address, for opening the web dashboard.
 
 <!-- PHOTO: UPTIME screen -->
 ![UPTIME screen](docs/photos/screen-uptime.jpg)
@@ -282,16 +325,42 @@ timeout.
 - If the cause changes part-way through (the ISP drops, then the WiFi does
   too), the outage is split so each log entry has the right tag.
 
-**Uptime percentages and outage counts use ISP outages only.** WIFI events
-are listed in the log but never affect the statistics. The idea is that the
-monitor sits on WiFi while the things you care about may be wired, so a weak
-WiFi signal at the monitor should not count against your ISP.
+### Up, but not working properly
+
+While the internet is reachable, two more things are watched. Neither is
+counted as an outage.
+
+| Tag | Declared when | Ends when |
+|---|---|---|
+| `SLOW` | Over the last minute, 20% or more of rounds got no reply, or average latency was both 3 times this connection's normal and at least 100 ms above it | Loss is back to 10% or less and latency is back near normal |
+| `DNS` | Three name lookups in a row fail | A lookup succeeds |
+
+- "Normal" latency is learned from your own connection and adjusts slowly,
+  so a satellite link and a fibre link are each judged against themselves.
+- DNS is checked every 30 seconds (every 2 seconds while failing) by asking
+  the DNS server your router hands out for a well-known name. Because
+  routers remember recent answers, a dead upstream resolver can take a few
+  minutes to show up.
+
+### Power
+
+Once a minute the monitor notes the time. If it starts up and finds it was
+silent for two minutes or more, it logs that stretch as `POWER`. That covers
+power cuts and the monitor being unplugged; it cannot tell those apart.
+
+### What counts against uptime
+
+**Uptime percentages and outage counts use ISP outages only.** `WIFI`,
+`SLOW`, `DNS` and `POWER` are listed in the log but never affect the
+statistics, and only ISP outages send a Discord message. The idea is that
+the monitor sits on WiFi while the things you care about may be wired, so a
+weak WiFi signal at the monitor should not count against your ISP.
 
 Good to know:
 
-- **Time** comes from the internet (NTP). The timezone is America/New_York;
-  to change it, edit `TIMEZONE` in `src/config.h` (it is a POSIX TZ string,
-  for example `GMT0BST,M3.5.0/1,M10.5.0` for the UK) and flash again.
+- **Time** comes from the internet (NTP), in the timezone you chose during
+  setup. Change it from the dashboard's Settings page. If yours is not in
+  the list, choose Other and enter a POSIX TZ string.
 - **Booting with no internet** is fine. Monitoring starts straight away and
   any outage that ends before the clock is set is saved with the right
   timestamp once the time arrives.
@@ -316,7 +385,10 @@ Good to know:
 | Screen is blank after flashing | You may have flashed the wrong build name. Check Step 1 and flash again. |
 | Picture is upside down | In `platformio.ini`, add `-DTFT_ROTATION=3` to your board's `build_flags` and flash again. |
 | Colours look inverted or red and blue are swapped (CYD) | Try the other CYD build (`cyd` or `cyd2usb`). CYD clones ship with two different panels. |
-| No Discord messages | Check the webhook URL starts with `https://discord.com/api/webhooks/`. Wipe settings and set up again to re-enter it. |
+| No Discord messages | Check the webhook URL starts with `https://discord.com/api/webhooks/`. Re-enter it on the dashboard's Settings page. |
+| `uptime.local` will not open | Use the IP address shown in the header of the UPTIME screen, for example `http://192.168.1.50`. Your phone or computer must be on the same WiFi. |
+| Times in the log are wrong | Pick your timezone on the dashboard's Settings page. |
+| It says SLOW all the time | One of the ping targets may be slow or blocked from your network. Change the targets on the Settings page. |
 | Stuck showing OFFLINE with ROUTER `--` | The board has lost WiFi. Move it closer to the router. |
 | I want to start over | Hold the wipe gesture for 5 seconds (see [Using it](#using-it)). |
 
@@ -339,6 +411,8 @@ Type a command and press Enter:
 |---|---|
 | `sim isp` | Pretend both internet targets stopped replying |
 | `sim wifi` | Pretend nothing replies |
+| `sim slow` | Add 300 ms to every internet reply (takes about 30 s to register as SLOW) |
+| `sim dns` | Pretend name lookups fail |
 | `sim off` | Back to real results |
 | `log` | Print the outage log |
 | `stats` | Print the uptime figures |
@@ -377,8 +451,12 @@ real hardware.
 | File | Job |
 |---|---|
 | `src/ping.cpp` | ICMP echo on raw sockets, in its own task (no ping library) |
-| `src/monitor.cpp` | Outage logic and latency history |
-| `src/storage.cpp` | Outage log on LittleFS |
+| `src/ping.cpp` (also) | DNS lookup check, sent straight to the network's DNS server |
+| `src/monitor.cpp` | Outage, SLOW and DNS logic; latency history |
+| `src/storage.cpp` | Outage log and power heartbeat on LittleFS |
+| `src/logview.cpp` | The log as displayed, with the ongoing event on top |
+| `src/web.cpp` | Web dashboard, JSON API, CSV export, settings page |
+| `src/html.cpp` | Page styling and form fields shared with the setup portal |
 | `src/stats.cpp` | Uptime percentages (ISP outages only) |
 | `src/timekeeper.cpp` | NTP, timezone, time formatting |
 | `src/settings.cpp` | WiFi and webhook settings in NVS |
