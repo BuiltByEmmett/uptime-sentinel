@@ -1,0 +1,5 @@
+.pio/
+.venv/
+.vscode/
+*.log
+tools/fonts/preview.png
