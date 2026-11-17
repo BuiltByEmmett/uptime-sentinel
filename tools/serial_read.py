@@ -1,8 +1,9 @@
 """Read the monitor's serial log for a fixed time.
 
-usage: serial_read.py PORT SECONDS [--reset] [--send "cmd@delay" ...]
+usage: serial_read.py PORT SECONDS [--reset] [--send "cmd@delay" ...] [--until TEXT N]
   --reset          pulse EN (via RTS) so the log starts from boot
   --send "x@5"     send line "x" five seconds after start (repeatable)
+  --until TEXT N   stop early once TEXT has appeared N times
 """
 import sys
 import time
@@ -21,6 +22,10 @@ def main():
             sends.append((float(delay), text))
             i += 1
         i += 1
+    until_text, until_count, seen = None, 0, 0
+    if "--until" in args:
+        k = args.index("--until")
+        until_text, until_count = args[k + 1], int(args[k + 2])
     sends.sort()
 
     ser = serial.Serial()
@@ -43,6 +48,10 @@ def main():
         if data:
             sys.stdout.write(data.decode("utf-8", "replace"))
             sys.stdout.flush()
+            if until_text:
+                seen += data.decode("utf-8", "replace").count(until_text)
+                if seen >= until_count:
+                    break
     ser.close()
 
 
