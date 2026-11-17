@@ -53,6 +53,7 @@ uint32_t markerWrittenMono = 0;
 // Heartbeat: the last time the monitor knew it was running.
 uint32_t lastAliveEpoch = 0;   // read at boot, 0 = none
 bool powerGapChecked = false;
+volatile bool markRequested = false;
 uint32_t aliveWrittenMono = 0;
 
 bool loadFrom(const char *path) {
@@ -173,6 +174,17 @@ void begin() {
 }
 
 void loop() {
+  if (markRequested) {
+    markRequested = false;
+    // Newest entry that was a loss of connection, not SLOW, DNS or POWER.
+    for (size_t i = recordCount; i-- > 0;) {
+      Cause c = static_cast<Cause>(records[i].cause);
+      if (!isIsp(c) && c != Cause::WIFI && c != Cause::LAN) continue;
+      records[i].flags |= FLAG_NEW_ADDRESS;
+      persist();
+      break;
+    }
+  }
   if (pendingCount > 0 && timekeeper::valid()) {
     for (size_t i = 0; i < pendingCount; i++) {
       const Pending &p = pending[i];
@@ -223,6 +235,8 @@ void outageEnded(Cause cause, uint32_t startMono, uint32_t endMono) {
 size_t count() { return recordCount; }
 
 const OutageRecord &get(size_t index) { return records[recordCount - 1 - index]; }
+
+void markNewAddress() { markRequested = true; }
 
 void clear() {
   recordCount = 0;

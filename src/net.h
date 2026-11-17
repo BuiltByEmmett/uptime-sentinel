@@ -26,7 +26,8 @@ bool waitEthernet(uint32_t ms);
 void beginWifi(const String &ssid, const String &pass);
 bool wifiUp();
 
-void loop();  // switches between the two links and retries WiFi
+void begin();  // call first
+void loop();   // switches between the two links and retries WiFi
 
 bool up();     // some link has an address
 bool wired();  // the link in use, or the last one used, is the wired port
@@ -34,5 +35,15 @@ IPAddress localIP();
 IPAddress gatewayIP();
 IPAddress dnsIP();
 String linkText();  // for the dashboard footer, e.g. "WiFi -52 dBm"
+
+// A TLS session needs tens of kilobytes of memory while it lasts. Tasks that
+// open one hold this for the duration, so there is never more than one.
+class TlsLock {
+ public:
+  TlsLock();
+  ~TlsLock();
+  TlsLock(const TlsLock &) = delete;
+  TlsLock &operator=(const TlsLock &) = delete;
+};
 
 }  // namespace net

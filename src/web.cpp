@@ -14,6 +14,7 @@
 #include "logview.h"
 #include "monitor.h"
 #include "net.h"
+#include "pubip.h"
 #include "screens.h"
 #include "settings.h"
 #include "stats.h"
@@ -79,7 +80,8 @@ const char DASHBOARD[] PROGMEM = R"HTML(
 <h2>OUTAGE LOG</h2>
 <table><thead><tr><th>Started</th><th>Lasted</th><th>Cause</th></tr></thead>
 <tbody id="log"></tbody></table>
-<p><a href="/log.csv">Download log (CSV)</a> &middot; <a href="/settings">Settings</a>
+<p><a href="/log.csv">Download log (CSV)</a> &middot; <a href="/ip">Public IP log</a>
+&middot; <a href="/settings">Settings</a>
 &middot; <a href="/update">Update firmware</a></p>
 <p id="foot"></p>
 <script>
@@ -112,7 +114,7 @@ if(!r.length){const td=b.insertRow().insertCell();td.colSpan=3;td.className='m';
 td.textContent='No outages logged yet'}
 r.forEach(e=>{const tr=b.insertRow();txt(tr.insertCell(),e.start);
 const d=tr.insertCell();txt(d,e.duration+(e.active?' (ongoing)':''));
-const c=tr.insertCell();txt(c,e.cause);c.className=cls[e.cause]||'m';
+const c=tr.insertCell();txt(c,e.cause+(e.newip?' \u00b7 new IP':''));c.className=cls[e.cause]||'m';
 if(e.active)d.className=cls[e.cause]||'m'})}catch(e){}}
 status();log();setInterval(status,2000);setInterval(log,10000);
 </script>)HTML";
@@ -317,7 +319,8 @@ void handleLog() {
     chunk += stamp;
     chunk += "\",\"duration\":\"" + duration(r.duration) + "\",\"cause\":\"";
     chunk += monitor::causeName(r.cause);
-    chunk += r.active ? "\",\"active\":true}" : "\",\"active\":false}";
+    chunk += r.active ? "\",\"active\":true" : "\",\"active\":false";
+    chunk += r.newAddress ? ",\"newip\":true}" : "}";
     if (chunk.length() > 1000) {
       server.sendContent(chunk);
       chunk = "";
@@ -333,7 +336,7 @@ void handleCsv() {
   server.sendHeader("Content-Disposition", "attachment; filename=\"uptime-sentinel-log.csv\"");
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, "text/csv", "");
-  String chunk = "started_local,started_unix,duration_seconds,cause,ongoing\r\n";
+  String chunk = "started_local,started_unix,duration_seconds,cause,ongoing,new_public_ip\r\n";
   size_t total = logview::count();
   for (size_t i = 0; i < total; i++) {
     logview::Row r = logview::get(i);
@@ -347,7 +350,9 @@ void handleCsv() {
     chunk += stamp;
     chunk += "," + String(r.start) + "," + String(r.duration) + ",";
     chunk += monitor::causeName(r.cause);
-    chunk += r.active ? ",yes\r\n" : ",no\r\n";
+    chunk += r.active ? ",yes" : ",no";
+    // Only whether the address changed; the address itself is never exported.
+    chunk += r.newAddress ? ",yes\r\n" : ",no\r\n";
     if (chunk.length() > 1000) {
       server.sendContent(chunk);
       chunk = "";
@@ -355,6 +360,47 @@ void handleCsv() {
   }
   if (chunk.length()) server.sendContent(chunk);
   server.sendContent("");
+}
+
+// The public IP log. This page is the only place the address is shown.
+void handleIp() {
+  if (!allowed(false)) return;
+  static pubip::Snapshot snap;  // too big for the stack; one request at a time
+  pubip::snapshot(snap);
+  String page = html::pageStart("Uptime Sentinel public IP log");
+  page += F("<p><a href=\"/\">&larr; Back to the dashboard</a></p><h2>PUBLIC IP ADDRESS</h2>");
+  if (!snap.enabled) {
+    page += F("<p>The public IP lookup is switched off. Turn it on in "
+              "<a href=\"/settings\">Settings</a>.</p>");
+  } else {
+    char stamp[16] = "never";
+    if (snap.checkedAt) timekeeper::formatStamp(snap.checkedAt, stamp, sizeof(stamp));
+    page += F("<div class=\"grid\"><div class=\"cell\" style=\"grid-column:span 2\">NOW<b>");
+    page += snap.current ? IPAddress(snap.current).toString() : String("--");
+    page += F("</b></div><div class=\"cell\">CHECKED<b style=\"font-size:14px\">");
+    page += stamp;
+    page += F("</b></div></div><p>Latest lookup: ");
+    page += html::escape(snap.status);
+    page += F(". The address is looked up every 10 minutes and after each outage. It is "
+              "shown only on this page.</p>");
+  }
+  page += F("<h2>CHANGES</h2><table><thead><tr><th>Seen</th><th>Old address</th>"
+            "<th>New address</th></tr></thead><tbody>");
+  if (snap.count == 0) {
+    page += F("<tr><td colspan=\"3\" class=\"m\">No changes logged yet</td></tr>");
+  }
+  for (size_t i = 0; i < snap.count; i++) {
+    char stamp[16];
+    timekeeper::formatStamp(snap.changes[i].time, stamp, sizeof(stamp));
+    page += "<tr><td>";
+    page += stamp;
+    page += "</td><td>" + IPAddress(snap.changes[i].from).toString() + "</td><td>" +
+            IPAddress(snap.changes[i].to).toString() + "</td></tr>";
+  }
+  page += F("</tbody></table><p>The last 50 changes are kept.</p>");
+  page += FPSTR(html::PAGE_END);
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "text/html", page);
 }
 
 // The display as a picture. No password: it shows nothing the dashboard
@@ -646,6 +692,18 @@ void sendSettings(const String &notice) {
   }
   page += F("<h2>TIME AND TARGETS</h2>");
   page += html::optionFields();
+  page += F("<h2>PUBLIC IP LOG</h2><label class=\"check\"><input type=\"checkbox\" "
+            "name=\"ipon\" value=\"1\"");
+  if (conf.ipEnabled) page += F(" checked");
+  page += F("> Look up and log the public IP address</label>"
+            "<label for=\"ipurl1\">Lookup service (HTTPS, answers with the address as "
+            "plain text)</label><input type=\"url\" id=\"ipurl1\" name=\"ipurl1\" "
+            "maxlength=\"120\" value=\"");
+  page += html::escape(conf.ipUrl[0]);
+  page += F("\"><label for=\"ipurl2\">Second service, used when the first fails</label>"
+            "<input type=\"url\" id=\"ipurl2\" name=\"ipurl2\" maxlength=\"120\" value=\"");
+  page += html::escape(conf.ipUrl[1]);
+  page += F("\"><p>Leave a box empty to go back to its default.</p>");
   page += F("<h2>ADMIN PASSWORD</h2>");
   page += html::adminFields();
   if (net::HAS_ETHERNET) {
@@ -692,6 +750,16 @@ void handleSettingsPost() {
   } else if (html::readOptions(server, tz, target1, target2, error)) {
     html::readAdmin(server, admin, adminChange, error);
   }
+  String ipUrl1 = server.arg("ipurl1");
+  String ipUrl2 = server.arg("ipurl2");
+  ipUrl1.trim();
+  ipUrl2.trim();
+  if (ipUrl1.length() == 0) ipUrl1 = settings::DEFAULT_IP_URL1;
+  if (ipUrl2.length() == 0) ipUrl2 = settings::DEFAULT_IP_URL2;
+  if (error.length() == 0 &&
+      (!settings::validLookupUrl(ipUrl1) || !settings::validLookupUrl(ipUrl2))) {
+    error = "A public IP lookup service must be an https:// address without spaces.";
+  }
   String wifiName = server.arg("wssid");
   wifiName.trim();
   if (net::HAS_ETHERNET && error.length() == 0 && wifiName.length() > 32) {
@@ -709,6 +777,7 @@ void handleSettingsPost() {
     if (wifiName != old.ssid || wifiPass != old.pass) settings::saveWifi(wifiName, wifiPass);
   }
   settings::saveOptions(tz, target1, target2);
+  settings::saveIpLookup(server.arg("ipon") == "1", ipUrl1, ipUrl2);
   if (server.arg("clearhook") == "1" && hook.length() == 0) settings::saveHook("");
   else if (hook.length()) settings::saveHook(hook);
   if (adminChange) settings::setAdminPassword(admin);
@@ -734,6 +803,7 @@ void begin() {
   server.on("/api/status", HTTP_GET, handleStatus);
   server.on("/api/log", HTTP_GET, handleLog);
   server.on("/log.csv", HTTP_GET, handleCsv);
+  server.on("/ip", HTTP_GET, handleIp);
   server.on("/settings", HTTP_GET, handleSettingsGet);
   server.on("/settings", HTTP_POST, handleSettingsPost);
   server.on("/login", HTTP_GET, handleLoginGet);

@@ -29,6 +29,7 @@ and leave it running.
 - [Step 5: Connect it to your WiFi](#step-5-connect-it-to-your-wifi)
 - [Step 6 (optional): Discord alerts](#step-6-optional-discord-alerts)
 - [The web dashboard](#the-web-dashboard)
+- [Public IP log](#public-ip-log)
 - [Updating the firmware](#updating-the-firmware)
 - [Using it](#using-it)
 - [The four screens](#the-four-screens)
@@ -52,6 +53,8 @@ and leave it running.
 - Notices when the connection is up but bad: **SLOW** (heavy packet loss or
   latency far above normal) and **DNS** (the internet is reachable but name
   lookups fail, which is what "the internet is down" often really is).
+- Keeps a **public IP log**: when your address changed, from what to what,
+  and which outages ended with a new one.
 - Logs **POWER** gaps, so you can tell a power cut from an ISP outage.
 - Saves every event (start time, duration, cause) to the board's flash
   memory. The last 200 are kept and survive power cuts.
@@ -303,8 +306,11 @@ browser on any phone or computer on the same network.
   top.
 - **Download log (CSV):** every entry with full date, time and duration in
   seconds. Handy as evidence when you complain to your ISP.
-- **Settings:** change the Discord webhook, timezone, ping targets and the
-  admin password. The monitor restarts to apply them.
+- **Public IP log:** your current public address and its last 50 changes.
+  See [Public IP log](#public-ip-log).
+- **Settings:** change the Discord webhook, timezone, ping targets, the
+  public IP lookup and the admin password. The monitor restarts to apply
+  them.
 - **Update firmware:** install a new version from your browser, with no USB
   cable. See [Updating the firmware](#updating-the-firmware).
 
@@ -349,6 +355,41 @@ since it shows nothing the dashboard does not. The pictures of the four
 screens in this README were made this way. Boards without a display answer
 404.
 
+## Public IP log
+
+Most home connections get a new public IP address now and then, often right
+after an outage. The monitor keeps track of that.
+
+- Every 10 minutes, and straight after any outage ends, it asks a lookup
+  service "what address do you see me as?".
+- When the answer differs from last time it stores the time, the old address
+  and the new one. The last 50 changes are kept on the board's flash memory
+  and survive power cuts and firmware updates.
+- The dashboard's **Public IP log** page shows the current address and the
+  changes.
+- An outage that ended with a new address is marked `new IP` in the
+  dashboard's outage log, and `yes` in the `new_public_ip` column of the
+  CSV.
+
+**Which service is contacted.** By default the monitor makes an HTTPS
+request to **`https://api.ipify.org`**, and to **`https://icanhazip.com`**
+if the first one fails. Both answer with nothing but the address. Like any
+website you visit, they see your public IP address and the time of the
+request; the monitor sends them nothing else. You can point it at any other
+service that answers an HTTPS request with a plain-text IPv4 address, or
+switch the feature off, under **Settings > Public IP log**. With it off the
+monitor contacts no lookup service at all.
+
+The server's certificate is checked against a set of well-known root
+certificates built into the firmware. A service whose certificate comes
+from an authority outside that set is refused, and the Public IP log page
+says so.
+
+**Privacy.** Your public IP address is shown on that one dashboard page and
+nowhere else. It is never put in a Discord message, the serial log, the
+CSV download, `/screenshot.bmp` or any of the device's screens. Remember
+that the dashboard itself can be opened by anyone on your network.
+
 ## Updating the firmware
 
 After the first flash you never need the USB cable again. New versions can
@@ -365,8 +406,8 @@ be installed from the dashboard.
 4. Choose that file on the update page and click **Upload and install**.
 5. Wait about a minute. The monitor restarts on the new version.
 
-Your WiFi details, webhook, other settings, admin password and the outage
-log are all kept. They live in separate areas of the flash memory that an
+Your WiFi details, webhook, other settings, admin password, the outage log
+and the public IP log are all kept. They live in separate areas of the flash memory that an
 update does not touch.
 
 The file is checked before it is used, and the monitor refuses:
@@ -404,8 +445,10 @@ and a longer press (about 1 second) is the screen action.
 5 minutes and the last hour; on the OUTAGES screen it scrolls four rows down
 (and wraps back to the newest).
 
-**Wiping settings** erases the saved WiFi, webhook, timezone, ping targets
-and admin password, and returns to the setup screen. A countdown appears; let go to cancel. The outage log is kept.
+**Wiping settings** erases the saved WiFi, webhook, timezone, ping targets,
+public IP lookup settings and admin password, and returns to the setup
+screen. A countdown appears; let go to cancel. The outage log and the public
+IP log are kept.
 Press the buttons after the board has started: holding BOOT while plugging
 in puts an ESP32 into its bootloader instead.
 
@@ -567,6 +610,7 @@ Good to know:
 | Times in the log are wrong | Pick your timezone on the dashboard's Settings page. |
 | It says SLOW all the time | One of the ping targets may be slow or blocked from your network. Change the targets on the Settings page. |
 | Stuck showing OFFLINE with ROUTER `--` | The board has lost WiFi. Move it closer to the router. |
+| The Public IP log page says the lookup failed | Check the service's address in Settings. It must be `https://` and answer with only an IPv4 address. Leave the box empty to go back to the default. |
 | The update page says it is switched off | Set an admin password in Settings first. |
 | The update page refuses my file | Use the file ending in `-update.bin` whose name contains your board's build name, shown on the update page. Download it again if it says the file is damaged. |
 | I forgot the admin password | Hold the wipe gesture for 5 seconds, then run the setup again. The outage log is kept. |
@@ -597,7 +641,9 @@ Type a command and press Enter:
 | `sim off` | Back to real results |
 | `log` | Print the outage log |
 | `stats` | Print the uptime figures |
+| `sim newip` | Pretend the next public IP lookup returns `203.0.113.7`, to test the public IP log. The lookup after that logs the change back |
 | `clearlog` | Erase the outage log |
+| `clearip` | Erase the public IP log |
 
 `sim isp` followed by `sim off` a few seconds later is the easy way to test
 your Discord webhook without unplugging your modem.
@@ -639,13 +685,14 @@ real hardware.
 | `src/monitor.cpp` | Outage, SLOW and DNS logic; latency history |
 | `src/storage.cpp` | Outage log and power heartbeat on LittleFS |
 | `src/logview.cpp` | The log as displayed, with the ongoing event on top |
-| `src/web.cpp` | Web dashboard, JSON API, CSV export, settings page, admin login, firmware update, screenshots |
+| `src/web.cpp` | Web dashboard, JSON API, CSV export, public IP page, settings page, admin login, firmware update, screenshots |
 | `src/html.cpp` | Page styling and form fields shared with the setup portal |
 | `src/stats.cpp` | Uptime percentages (ISP outages only) |
 | `src/timekeeper.cpp` | NTP, timezone, time formatting |
 | `src/settings.cpp` | WiFi, webhook and other settings in NVS; admin password hash |
 | `src/portal.cpp` | Setup access point and captive portal |
 | `src/alerts.cpp` | Discord webhook over verified HTTPS |
+| `src/pubip.cpp` | Public IP lookup over verified HTTPS, and its change log |
 | `src/display.cpp` | Drawing primitives, scaling, change tracking and screenshots |
 | `src/screens.cpp` | The four screens |
 | `src/buttons.cpp` | Buttons, touch and the wipe gesture |

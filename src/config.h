@@ -19,6 +19,10 @@ constexpr uint32_t HOP_RECHECK_SEC = 24UL * 3600;
 constexpr uint32_t HOP_RETRY_SEC = 3600;    // after a recheck that found nothing
 constexpr uint8_t HOP_PROBES = 3;
 
+// Public IP log.
+constexpr uint32_t PUBIP_INTERVAL_SEC = 600;
+constexpr uint32_t PUBIP_RETRY_SEC = 60;    // after a lookup that failed
+
 // SLOW: judged over the last minute of rounds.
 constexpr size_t SLOW_WINDOW_ROUNDS = 30;
 constexpr uint8_t SLOW_LOSS_ENTER_PCT = 20;

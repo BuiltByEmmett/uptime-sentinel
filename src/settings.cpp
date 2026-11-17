@@ -102,6 +102,9 @@ void begin() {
   config.tz = p.getString("tz", DEFAULT_TZ);
   config.target[0] = p.getString("target1", DEFAULT_TARGET1);
   config.target[1] = p.getString("target2", DEFAULT_TARGET2);
+  config.ipEnabled = p.getBool("ipon", true);
+  config.ipUrl[0] = p.getString("ipurl1", DEFAULT_IP_URL1);
+  config.ipUrl[1] = p.getString("ipurl2", DEFAULT_IP_URL2);
   config.verified = p.getBool("verified", false);
   config.hookAnnounced = p.getBool("announced", false);
   adminSet = p.isKey("asalt") && p.isKey("ahash") &&
@@ -158,6 +161,20 @@ bool saveOptions(const String &tz, const String &target1, const String &target2)
   return true;
 }
 
+bool saveIpLookup(bool enabled, const String &url1, const String &url2) {
+  if (!validLookupUrl(url1) || !validLookupUrl(url2)) return false;
+  Preferences p;
+  p.begin(NS_CONFIG, false);
+  p.putBool("ipon", enabled);
+  p.putString("ipurl1", url1);
+  p.putString("ipurl2", url2);
+  p.end();
+  config.ipEnabled = enabled;
+  config.ipUrl[0] = url1;
+  config.ipUrl[1] = url2;
+  return true;
+}
+
 void setVerified() {
   config.verified = true;
   putBool("verified", true);
@@ -178,6 +195,8 @@ void wipe() {
   config.tz = DEFAULT_TZ;
   config.target[0] = DEFAULT_TARGET1;
   config.target[1] = DEFAULT_TARGET2;
+  config.ipUrl[0] = DEFAULT_IP_URL1;
+  config.ipUrl[1] = DEFAULT_IP_URL2;
   refreshTargets();
 }
 
@@ -202,6 +221,19 @@ bool validTz(const String &text) {
 
 bool validHook(const String &text) {
   return text.length() == 0 || (text.startsWith("https://") && text.length() <= 240);
+}
+
+bool validLookupUrl(const String &text) {
+  if (!text.startsWith("https://") || text.length() < 12 || text.length() > IP_URL_MAX_LEN) {
+    return false;
+  }
+  for (size_t i = 0; i < text.length(); i++) {
+    char c = text[i];
+    if (c <= ' ' || c > '~' || c == '"' || c == '\'' || c == '<' || c == '>' || c == '\\') {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool hasAdmin() { return adminSet; }

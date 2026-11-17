@@ -32,6 +32,7 @@ String jsonBody(const char *text) {
 }
 
 int post(const char *text) {
+  net::TlsLock one;
   WiFiClientSecure client;
   client.setCACert(DISCORD_ROOT_CAS);
   HTTPClient http;

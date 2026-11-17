@@ -12,6 +12,7 @@ struct Row {
   uint32_t duration;  // seconds (so far, for an active row)
   Cause cause;
   bool active;
+  bool newAddress;  // the public IP address was different after this outage
 };
 
 size_t count();

@@ -10,6 +10,7 @@ namespace {
 
 constexpr uint32_t RECONNECT_MS = 30000;
 
+SemaphoreHandle_t tlsMutex = nullptr;
 String wifiSsid;
 String wifiPass;
 bool wifiWasUp = false;
@@ -65,6 +66,16 @@ bool waitEthernet(uint32_t) { return false; }
 bool wired() { return false; }
 
 #endif
+
+void begin() { tlsMutex = xSemaphoreCreateMutex(); }
+
+TlsLock::TlsLock() {
+  if (tlsMutex) xSemaphoreTake(tlsMutex, portMAX_DELAY);
+}
+
+TlsLock::~TlsLock() {
+  if (tlsMutex) xSemaphoreGive(tlsMutex);
+}
 
 void beginWifi(const String &ssid, const String &pass) {
   wifiSsid = ssid;

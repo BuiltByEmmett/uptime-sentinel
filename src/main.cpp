@@ -12,6 +12,7 @@
 #include "net.h"
 #include "ping.h"
 #include "portal.h"
+#include "pubip.h"
 #include "screens.h"
 #include "settings.h"
 #include "stats.h"
@@ -72,6 +73,10 @@ void onOutageStart(Cause cause, uint32_t startMono) { storage::outageStarted(cau
 void onOutageEnd(Cause cause, uint32_t startMono, uint32_t endMono, bool recovered) {
   storage::outageEnded(cause, startMono, endMono);
   if (isIsp(cause)) ispDownCarry += endMono - startMono;
+  // An outage is often followed by a new public address.
+  if (recovered && (isIsp(cause) || cause == Cause::WIFI || cause == Cause::LAN)) {
+    pubip::afterOutage();
+  }
   if (recovered) {
     // One Discord message per ISP outage, sent when the internet is back.
     if (ispDownCarry > 0) {
@@ -163,8 +168,12 @@ void runCommand(const String &cmd) {
     return;
   } else if (cmd == "clearlog") {
     storage::clear();
+  } else if (cmd == "sim newip") {
+    pubip::simulateChange();
+  } else if (cmd == "clearip") {
+    pubip::clear();
   } else {
-    Serial.println("[cmd] commands: sim isp | sim isplocal | sim wifi | sim slow | sim dns | sim off | log | stats | clearlog");
+    Serial.println("[cmd] commands: sim isp | sim isplocal | sim wifi | sim slow | sim dns | sim newip | sim off | log | stats | clearlog | clearip");
     return;
   }
   Serial.printf("[cmd] ok: %s\n", cmd.c_str());
@@ -192,6 +201,7 @@ void setup() {
   Serial.printf("\n[boot] uptime-sentinel %s (%s, slot %s)\n", cfg::VERSION, cfg::BOARD,
                 slot ? slot->label : "?");
 
+  net::begin();
   buttons::begin();
   display::begin();
   display::message("UPTIME SENTINEL", "Starting...");
@@ -236,6 +246,8 @@ void setup() {
 
   alerts::begin(conf.hook);
   if (conf.hook.length() && !conf.hookAnnounced) alerts::announceOnline();
+
+  pubip::begin();
 
   monitor::Handlers handlers = {onOutageStart, onOutageEnd};
   monitor::begin(handlers);

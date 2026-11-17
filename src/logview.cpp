@@ -22,6 +22,7 @@ Row get(size_t index) {
       row.duration = timekeeper::mono() - startMono;
       row.cause = cause;
       row.active = true;
+      row.newAddress = false;
       return row;
     }
     index--;
@@ -31,6 +32,7 @@ Row get(size_t index) {
   row.duration = r.duration;
   row.cause = static_cast<Cause>(r.cause);
   row.active = false;
+  row.newAddress = r.flags & storage::FLAG_NEW_ADDRESS;
   return row;
 }
 
