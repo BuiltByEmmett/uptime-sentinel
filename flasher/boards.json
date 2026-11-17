@@ -32,19 +32,19 @@
   {
     "env": "esp32-headless",
     "name": "Any ESP32 dev board, no screen",
-    "detail": "Dashboard, log and Discord alerts only.",
+    "detail": "Dashboard, log and alerts only.",
     "chipFamily": "ESP32"
   },
   {
     "env": "esp32s3-headless",
     "name": "Any ESP32-S3 dev board, no screen",
-    "detail": "Dashboard, log and Discord alerts only.",
+    "detail": "Dashboard, log and alerts only.",
     "chipFamily": "ESP32-S3"
   },
   {
     "env": "esp32c3-headless",
     "name": "Any ESP32-C3 dev board, no screen",
-    "detail": "Dashboard, log and Discord alerts only.",
+    "detail": "Dashboard, log and alerts only.",
     "chipFamily": "ESP32-C3"
   },
   {

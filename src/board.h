@@ -2,7 +2,7 @@
 // platformio.ini, so adding a board is a new [env] block and no code changes.
 #pragma once
 
-// HEADLESS            no display: serial log and Discord only
+// HEADLESS            no display: dashboard, serial log and alerts only
 // SCREEN_W, SCREEN_H  panel size in pixels after rotation
 // TFT_ROTATION        TFT_eSPI rotation (0-3); add 2 if the picture is upside down
 // UI_SCALE_NUM/DEN    the UI is designed at 240x135 and drawn at NUM/DEN size

@@ -5,7 +5,8 @@
 Uptime Sentinel is a tiny internet uptime monitor that runs on a $10 ESP32
 board. It pings your router and two public servers every two seconds, works
 out whether a failure is your ISP's fault or just your WiFi, keeps a log of
-every outage, and can message you on Discord when the internet comes back.
+every outage, and can message you on Discord, ntfy, Telegram or a webhook
+when the internet comes back.
 
 No account, no cloud service, no subscription. Plug it into any USB charger
 and leave it running.
@@ -27,8 +28,12 @@ and leave it running.
 - [Step 4: Install](#step-4-install)
 - [Alternative: build it yourself with PlatformIO](#alternative-build-it-yourself-with-platformio)
 - [Step 5: Connect it to your WiFi](#step-5-connect-it-to-your-wifi)
-- [Step 6 (optional): Discord alerts](#step-6-optional-discord-alerts)
+- [Step 6 (optional): Alerts](#step-6-optional-alerts)
 - [The web dashboard](#the-web-dashboard)
+- [Website checks](#website-checks)
+- [Device list](#device-list)
+- [ISP report](#isp-report)
+- [Metrics for Prometheus](#metrics-for-prometheus)
 - [Public IP log](#public-ip-log)
 - [Updating the firmware](#updating-the-firmware)
 - [Using it](#using-it)
@@ -62,8 +67,16 @@ and leave it running.
   on four screens.
 - Serves a **web dashboard** on your network at `http://uptime.local`, with
   the full log, a CSV download and a settings page.
-- Optionally posts one Discord message when an ISP outage ends:
+- Optionally sends one message when an ISP outage ends, to **Discord, ntfy,
+  Telegram** or any **webhook**:
   `Internet was down 1m 12s (ISP side). Back at 14:03.`
+- Shows the last **90 days as a calendar**, one square per day, and makes a
+  printable **monthly report** you can send to your ISP.
+- Checks up to five **websites** of your choice, verifies their HTTPS
+  certificates and warns before one expires.
+- Lists the **devices on your network** with maker, host name and when each
+  was last seen.
+- Offers its figures to **Prometheus** at `/metrics`.
 - Set up from your phone. Your WiFi password and webhook URL are stored only
   on the device, never in the code.
 
@@ -108,7 +121,7 @@ Notes:
   try one, please open an issue saying whether it worked. If the picture is
   upside down or the colours are wrong, see [Troubleshooting](#troubleshooting).
 - **No screen?** The headless builds do everything except draw: pinging,
-  outage logging and Discord alerts all work, and you can read the log over
+  outage logging and alerts all work, and you can read the log over
   USB (see [Serial console](#serial-console)).
 - **Ethernet boards** use the cable whenever it is plugged in and fall back
   to WiFi when it is not. See [Ethernet boards](#ethernet-boards).
@@ -623,7 +636,7 @@ from an authority outside that set is refused, and the Public IP log page
 says so.
 
 **Privacy.** Your public IP address is shown on that one dashboard page and
-nowhere else. It is never put in a Discord message, the serial log, the
+nowhere else. It is never put in an alert, the serial log, the
 CSV download, `/screenshot.bmp` or any of the device's screens. Remember
 that the dashboard itself can be opened by anyone on your network.
 
@@ -659,8 +672,9 @@ The new firmware is written to a spare slot while the old one keeps running,
 and the monitor only switches over once every check has passed. A refused or
 interrupted upload leaves it running exactly what it had.
 
-**Every build supports this**, including the 4 MB boards. The firmware is
-about 1.1 MB and each board has two slots for it: 1.9 MB each on 4 MB
+**Every build supports this**, including the 4 MB boards. Every build also
+has every feature: the firmware is about 1.3 MB and each board has two slots
+for it: 1.9 MB each on 4 MB
 boards, 3 MB or more on 16 MB boards.
 
 If an update ever leaves a board that will not start, flash it again over
@@ -743,7 +757,7 @@ timeout.
 - An outage is declared after **3 failed rounds in a row**, and is
   back-dated to the first of them.
 - It ends at the first OK round. It is then written to the log, and if it
-  was an ISP outage and a webhook is saved, one Discord message is sent.
+  was an ISP outage and an alert channel is set up, one alert is sent.
 - If the cause changes part-way through (the ISP drops, then the WiFi does
   too), the outage is split so each log entry has the right tag.
 
@@ -764,7 +778,7 @@ address. From then on it is pinged every round with the other targets.
 | replies | fails | both fail | ISP LOCAL failure |
 | any | replies | both fail | ISP UPSTREAM failure |
 
-Both count as ISP outages for the uptime figures and the Discord message.
+Both count as ISP outages for the uptime figures and the alert.
 If the fault moves during an outage, the log gets one entry for each part.
 
 The feature switches itself off, and outages are logged as plain `ISP` as
@@ -808,7 +822,7 @@ power cuts and the monitor being unplugged; it cannot tell those apart.
 **Uptime percentages and outage counts use ISP outages only** (`ISP`,
 `ISP LOCAL` and `ISP UPSTREAM`). `WIFI`, `LAN`, `SLOW`, `DNS` and `POWER`
 are listed in the log but never affect the statistics, and only ISP outages
-send a Discord message. The idea is that
+send an alert. The idea is that
 the monitor sits on WiFi while the things you care about may be wired, so a
 weak WiFi signal at the monitor should not count against your ISP.
 
@@ -887,7 +901,7 @@ Type a command and press Enter:
 | `cleardays` | Erase the calendar and rebuild it from the outage log |
 
 `sim isp` followed by `sim off` a few seconds later is the easy way to test
-your Discord webhook without unplugging your modem.
+your alert channels without unplugging your modem.
 
 ## Adding another board
 
