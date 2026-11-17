@@ -37,7 +37,7 @@ and leave it running.
 - [Public IP log](#public-ip-log)
 - [Updating the firmware](#updating-the-firmware)
 - [Using it](#using-it)
-- [The four screens](#the-four-screens)
+- [The five screens](#the-five-screens)
 - [How outages are classified](#how-outages-are-classified)
 - [Troubleshooting](#troubleshooting)
 - [Serial console](#serial-console)
@@ -64,7 +64,7 @@ and leave it running.
 - Saves every event (start time, duration, cause) to the board's flash
   memory. The last 200 are kept and survive power cuts.
 - Shows live status, a latency graph, the outage log and uptime percentages
-  on four screens.
+  on four screens, plus a fifth for your websites when you have set any up.
 - Serves a **web dashboard** on your network at `http://uptime.local`, with
   the full log, a CSV download and a settings page.
 - Optionally sends one message when an ISP outage ends, to **Discord, ntfy,
@@ -336,7 +336,7 @@ The monitor sends a POST with `Content-Type: application/json` to the URL
 you give (`https://` or `http://`):
 
 ```json
-{"source":"uptime-sentinel","version":"1.4.0","event":"outage_ended",
+{"source":"uptime-sentinel","version":"1.5.0","event":"outage_ended",
  "message":"Internet was down 4m 12s (ISP side). Back at 14:03.","time":1794904199}
 ```
 
@@ -428,19 +428,20 @@ it refuses requests that come from other websites.
 ### Screenshots of the display
 
 `http://uptime.local/screenshot.bmp` returns a picture of what the display
-is showing right now. Add `?screen=status`, `latency`, `outages` or `uptime`
-to get that screen whichever one the display is on, for example
-`http://uptime.local/screenshot.bmp?screen=latency`. It needs no password,
-since it shows nothing the dashboard does not. The pictures of the four
-screens in this README were made this way. Boards without a display answer
-404.
+is showing right now. Add `?screen=status`, `latency`, `outages`, `uptime`
+or `sites` to get that screen whichever one the display is on, for example
+`http://uptime.local/screenshot.bmp?screen=latency`. (`sites` only works
+when at least one website is set up.) It needs no password, since it shows
+nothing the dashboard does not. The pictures of the screens in this README
+were made this way. Boards without a display answer 404.
 
 ## Website checks
 
 The monitor can also keep an eye on up to five websites: your own site, a
 service you depend on, a device on your network with a web page. Add them
 in **Settings** under **Websites**, each with a short name and an address
-starting with `https://` or `http://`. The **Websites** page on the
+starting with `https://` or `http://`. On boards with a display they also
+get a screen of their own, [SITES](#5-sites). The **Websites** page on the
 dashboard then shows, for each one:
 
 - its state: UP, DOWN, or WAITING before the first check
@@ -703,7 +704,7 @@ IP log are kept.
 Press the buttons after the board has started: holding BOOT while plugging
 in puts an ESP32 into its bootloader instead.
 
-## The four screens
+## The five screens
 
 Only the parts of the screen that changed are redrawn, so nothing flickers.
 
@@ -741,6 +742,20 @@ shows the monitor's IP address, for opening the web dashboard. (It is
 covered up in the picture below.)
 
 ![UPTIME screen](docs/photos/screen-uptime.png)
+
+### 5. SITES
+
+One row for each website you set up under [Website checks](#website-checks),
+up to five: its name (cut short if it does not fit), the word `UP` in green
+or `DOWN` in orange, and the response time of the latest check. A site that
+has not been checked yet shows `--`. A yellow `CERT` tag appears next to the
+name when the site's HTTPS certificate has 14 days or fewer left.
+
+With no websites set up this screen is left out: Button 1 goes from UPTIME
+straight back to STATUS and the header shows four page squares instead of
+five.
+
+![SITES screen](docs/photos/screen-sites.png)
 
 ## How outages are classified
 
@@ -957,7 +972,7 @@ real hardware.
 | `src/alerts.cpp` | Alerts to Discord, ntfy, Telegram and a generic webhook |
 | `src/pubip.cpp` | Public IP lookup over verified HTTPS, and its change log |
 | `src/display.cpp` | Drawing primitives, scaling, change tracking and screenshots |
-| `src/screens.cpp` | The four screens |
+| `src/screens.cpp` | The screens |
 | `src/buttons.cpp` | Buttons, touch and the wipe gesture |
 | `src/board.h` | Per-board options |
 | `tools/` | Font and certificate generators, serial log reader, release and flasher scripts |
