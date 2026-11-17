@@ -1,6 +1,7 @@
 // Everything the user configures, kept in NVS: WiFi credentials, the Discord
-// webhook URL, timezone and ping targets. Secrets are never compiled into
-// the firmware, printed to serial or sent back to a browser.
+// webhook URL, timezone, ping targets and the optional admin password.
+// Secrets are never compiled into the firmware, printed to serial or sent
+// back to a browser. The admin password is kept only as a salted hash.
 #pragma once
 #include <Arduino.h>
 
@@ -41,6 +42,15 @@ void wipe();
 bool validIp(const String &text);
 bool validTz(const String &text);
 bool validHook(const String &text);
+
+// Optional admin password for the dashboard's Settings page. Only a random
+// salt and a PBKDF2-HMAC-SHA256 hash are stored.
+constexpr size_t ADMIN_MIN_LEN = 8;
+constexpr size_t ADMIN_MAX_LEN = 64;
+bool hasAdmin();
+bool validAdminPassword(const String &text);
+bool setAdminPassword(const String &password);  // empty removes it
+bool checkAdminPassword(const String &password);
 
 uint32_t targetAddr(int index);      // network byte order, for the ping task
 const char *targetLabel(int index);  // short name for the screen

@@ -185,7 +185,10 @@ If the upload cannot find or connect to the board:
 6. Pick your **timezone**, so the log shows your local time.
 7. Leave the two **ping targets** as they are (`1.1.1.1` and `8.8.8.8`)
    unless you have a reason to change them. They must be IP addresses.
-8. Tap **Save and connect**.
+8. Optional: choose an **admin password** (8 characters or more, typed
+   twice). When one is set, the dashboard asks for it before opening the
+   Settings page. You can add, change or remove it later in Settings.
+9. Tap **Save and connect**.
 
 The board restarts, joins your WiFi and starts monitoring. If the password
 was wrong, the setup network comes back after about 30 seconds so you can
@@ -228,18 +231,34 @@ browser on any phone or computer on the same network.
   top.
 - **Download log (CSV):** every entry with full date, time and duration in
   seconds. Handy as evidence when you complain to your ISP.
-- **Settings:** change the Discord webhook, timezone and ping targets. The
-  monitor restarts to apply them.
+- **Settings:** change the Discord webhook, timezone, ping targets and the
+  admin password. The monitor restarts to apply them.
 
 If `uptime.local` does not open (some Android phones and locked-down
 networks do not support that kind of name), use the monitor's IP address
 instead. It is shown in the header of the UPTIME screen, and in the serial
 log at start-up.
 
-The dashboard has no password. Anyone on your WiFi can view it and change
-its settings, so do not expose it to the internet. It never shows the saved
-webhook URL or your WiFi password, and it refuses requests that come from
-other websites.
+### Admin password
+
+Viewing the dashboard, the log and the CSV never needs a password. Without
+an admin password, anyone on your WiFi can also open Settings and change
+them. Set an admin password (in the setup page or in Settings) to lock
+Settings behind a login.
+
+- Only a salted hash of the password is stored on the device (PBKDF2 with
+  SHA-256). The password itself cannot be read back.
+- A login lasts until 30 minutes pass without use, or until the monitor
+  restarts. Wrong guesses are slowed down, up to a minute between tries.
+- **Forgotten it?** Hold the wipe gesture for 5 seconds (see
+  [Using it](#using-it)). That clears the password with the other settings
+  and keeps the outage log.
+- The dashboard is plain HTTP, like most devices on a home network, so the
+  password is not encrypted on its way from your browser. Choose one you do
+  not use anywhere else, and do not expose the dashboard to the internet.
+
+The dashboard never shows the saved webhook URL or your WiFi password, and
+it refuses requests that come from other websites.
 
 <!-- PHOTO: screenshot of the web dashboard -->
 ![Web dashboard](docs/photos/dashboard.png)
@@ -259,9 +278,8 @@ and a longer press (about 1 second) is the screen action.
 5 minutes and the last hour; on the OUTAGES screen it scrolls four rows down
 (and wraps back to the newest).
 
-**Wiping settings** erases the saved WiFi, webhook, timezone and ping
-targets and returns to the
-setup screen. A countdown appears; let go to cancel. The outage log is kept.
+**Wiping settings** erases the saved WiFi, webhook, timezone, ping targets
+and admin password, and returns to the setup screen. A countdown appears; let go to cancel. The outage log is kept.
 Press the buttons after the board has started: holding BOOT while plugging
 in puts an ESP32 into its bootloader instead.
 
@@ -390,6 +408,7 @@ Good to know:
 | Times in the log are wrong | Pick your timezone on the dashboard's Settings page. |
 | It says SLOW all the time | One of the ping targets may be slow or blocked from your network. Change the targets on the Settings page. |
 | Stuck showing OFFLINE with ROUTER `--` | The board has lost WiFi. Move it closer to the router. |
+| I forgot the admin password | Hold the wipe gesture for 5 seconds, then run the setup again. The outage log is kept. |
 | I want to start over | Hold the wipe gesture for 5 seconds (see [Using it](#using-it)). |
 
 ## Serial console
@@ -455,11 +474,11 @@ real hardware.
 | `src/monitor.cpp` | Outage, SLOW and DNS logic; latency history |
 | `src/storage.cpp` | Outage log and power heartbeat on LittleFS |
 | `src/logview.cpp` | The log as displayed, with the ongoing event on top |
-| `src/web.cpp` | Web dashboard, JSON API, CSV export, settings page |
+| `src/web.cpp` | Web dashboard, JSON API, CSV export, settings page, admin login |
 | `src/html.cpp` | Page styling and form fields shared with the setup portal |
 | `src/stats.cpp` | Uptime percentages (ISP outages only) |
 | `src/timekeeper.cpp` | NTP, timezone, time formatting |
-| `src/settings.cpp` | WiFi and webhook settings in NVS |
+| `src/settings.cpp` | WiFi, webhook and other settings in NVS; admin password hash |
 | `src/portal.cpp` | Setup access point and captive portal |
 | `src/alerts.cpp` | Discord webhook over verified HTTPS |
 | `src/display.cpp` | Drawing primitives, scaling and change tracking |

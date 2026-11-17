@@ -1,6 +1,7 @@
 // Dashboard on the local network: http://uptime.local (or the IP address).
 // Live status, the full outage log, a CSV download and a settings page.
 // Reachable only from the same network; it never sends saved secrets back.
+// When an admin password is set, Settings needs a login first.
 #pragma once
 #include <Arduino.h>
 

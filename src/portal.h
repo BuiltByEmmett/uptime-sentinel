@@ -1,6 +1,6 @@
 // First-boot setup: an open access point with a captive portal page for
-// picking the WiFi network, entering its password and an optional Discord
-// webhook URL. Saves to NVS and reboots.
+// picking the WiFi network, entering its password, an optional Discord
+// webhook URL and an optional admin password. Saves to NVS and reboots.
 #pragma once
 #include <Arduino.h>
 

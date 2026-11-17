@@ -19,4 +19,11 @@ String optionFields();
 bool readOptions(WebServer &server, String &tz, String &target1, String &target2,
                  String &error);
 
+// Form fields for setting, changing or removing the admin password.
+String adminFields();
+
+// Reads them back. `change` is false when the user left them alone; an empty
+// `password` with `change` set means remove it.
+bool readAdmin(WebServer &server, String &password, bool &change, String &error);
+
 }  // namespace html

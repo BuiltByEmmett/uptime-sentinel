@@ -114,4 +114,44 @@ bool readOptions(WebServer &server, String &tz, String &target1, String &target2
   return true;
 }
 
+String adminFields() {
+  String out;
+  if (settings::hasAdmin()) {
+    out += F("<p>An admin password is set. Leave both boxes empty to keep it.</p>");
+  } else {
+    out += F("<p>Optional. When one is set, it is needed to open the Settings page.</p>");
+  }
+  out += F("<label for=\"admin\">New admin password (8 characters or more)</label>"
+           "<input id=\"admin\" name=\"admin\" type=\"password\" maxlength=\"64\" "
+           "autocomplete=\"new-password\">"
+           "<label for=\"admin2\">The same password again</label>"
+           "<input id=\"admin2\" name=\"admin2\" type=\"password\" maxlength=\"64\" "
+           "autocomplete=\"new-password\">");
+  if (settings::hasAdmin()) {
+    out += F("<label class=\"check\"><input type=\"checkbox\" name=\"clearadmin\" "
+             "value=\"1\"> Remove the admin password</label>");
+  }
+  return out;
+}
+
+bool readAdmin(WebServer &server, String &password, bool &change, String &error) {
+  password = server.arg("admin");
+  String again = server.arg("admin2");
+  change = false;
+  if (password.length() == 0 && again.length() == 0) {
+    change = server.arg("clearadmin") == "1";
+    return true;
+  }
+  if (password != again) {
+    error = "The two admin passwords do not match.";
+    return false;
+  }
+  if (!settings::validAdminPassword(password)) {
+    error = "The admin password must be 8 to 64 characters long.";
+    return false;
+  }
+  change = true;
+  return true;
+}
+
 }  // namespace html

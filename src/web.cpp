@@ -3,6 +3,7 @@
 #include <ESPmDNS.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <esp_system.h>
 #include <math.h>
 
 #include "config.h"
@@ -20,6 +21,14 @@ WebServer server(80);
 bool mdnsStarted = false;
 bool restartPending = false;
 uint32_t restartAt = 0;
+
+// One admin session at a time, held in RAM: a restart logs everyone out.
+constexpr uint32_t SESSION_IDLE_MS = 30UL * 60UL * 1000UL;
+constexpr char COOKIE_NAME[] = "sid";
+String sessionToken;
+uint32_t sessionSeenAt = 0;
+uint8_t loginFails = 0;
+uint32_t loginLockedUntil = 0;
 
 const char DASHBOARD[] PROGMEM = R"HTML(
 <div id="state" class="big m">...</div><div id="sub" class="m" style="font-size:13px">&nbsp;</div>
@@ -96,6 +105,57 @@ bool allowed(bool isPost) {
   }
   if (hostOk && originOk) return true;
   server.send(403, "text/plain", "Forbidden");
+  return false;
+}
+
+// Compares all of both strings, so timing does not reveal how much matched.
+bool sameText(const String &a, const String &b) {
+  uint8_t diff = a.length() == b.length() ? 0 : 1;
+  for (size_t i = 0; i < a.length() && i < b.length(); i++) diff |= a[i] ^ b[i];
+  return diff == 0;
+}
+
+String cookie(const char *name) {
+  String all = server.header("Cookie");
+  String key = String(name) + "=";
+  int from = 0;
+  while (from < static_cast<int>(all.length())) {
+    int end = all.indexOf(';', from);
+    if (end < 0) end = all.length();
+    String part = all.substring(from, end);
+    part.trim();
+    if (part.startsWith(key)) return part.substring(key.length());
+    from = end + 1;
+  }
+  return "";
+}
+
+bool sessionValid() {
+  if (sessionToken.length() == 0) return false;
+  if (millis() - sessionSeenAt > SESSION_IDLE_MS) {
+    sessionToken = "";
+    return false;
+  }
+  if (!sameText(cookie(COOKIE_NAME), sessionToken)) return false;
+  sessionSeenAt = millis();
+  return true;
+}
+
+// The pages a login may lead back to. Anything else falls back to Settings.
+const char *safeNext(const String &next) { return next == "/update" ? "/update" : "/settings"; }
+
+void redirect(const String &where) {
+  server.sendHeader("Location", where, true);
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(303, "text/plain", "");
+}
+
+// True when the request may use an admin page. With no admin password set
+// the pages are open, as they were before passwords existed. Otherwise the
+// visitor is sent to the login page and this returns false.
+bool requireAdmin(const char *page) {
+  if (!settings::hasAdmin() || sessionValid()) return true;
+  redirect(String("/login?next=") + page);
   return false;
 }
 
@@ -236,6 +296,74 @@ void handleCsv() {
   server.sendContent("");
 }
 
+void sendLogin(const String &next, const String &notice) {
+  String page = html::pageStart("Uptime Sentinel login");
+  page += F("<p><a href=\"/\">&larr; Back to the dashboard</a></p>");
+  if (notice.length()) page += "<p class=\"warn\">" + html::escape(notice) + "</p>";
+  page += F("<form method=\"post\" action=\"/login\"><input type=\"hidden\" name=\"next\" "
+            "value=\"");
+  page += safeNext(next);
+  page += F("\"><label for=\"password\">Admin password</label>"
+            "<input id=\"password\" name=\"password\" type=\"password\" maxlength=\"64\" "
+            "autocomplete=\"current-password\" autofocus>"
+            "<button type=\"submit\">Log in</button></form>"
+            "<p>Forgotten it? Hold the wipe gesture on the monitor for 5 seconds. That "
+            "erases the password along with the other settings, and keeps the outage "
+            "log.</p>");
+  page += FPSTR(html::PAGE_END);
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "text/html", page);
+}
+
+void handleLoginGet() {
+  if (!allowed(false)) return;
+  String next = safeNext(server.arg("next"));
+  if (!settings::hasAdmin() || sessionValid()) redirect(next);
+  else sendLogin(next, "");
+}
+
+void handleLoginPost() {
+  if (!allowed(true)) return;
+  String next = safeNext(server.arg("next"));
+  if (!settings::hasAdmin()) {
+    redirect(next);
+    return;
+  }
+  int32_t wait = static_cast<int32_t>(loginLockedUntil - millis());
+  if (loginFails && wait > 0) {
+    int seconds = wait / 1000 + 1;
+    sendLogin(next, "Too many wrong passwords. Wait " + String(seconds) +
+                        (seconds == 1 ? " second" : " seconds") + " and try again.");
+    return;
+  }
+  if (!settings::checkAdminPassword(server.arg("password"))) {
+    // Each wrong guess doubles the wait before the next one, up to a minute.
+    if (loginFails < 6) loginFails++;
+    loginLockedUntil = millis() + (1000UL << loginFails);
+    Serial.println("[web] wrong admin password");
+    sendLogin(next, "Wrong password.");
+    return;
+  }
+  loginFails = 0;
+  uint8_t raw[16];
+  esp_fill_random(raw, sizeof(raw));
+  char hex[33];
+  for (size_t i = 0; i < sizeof(raw); i++) snprintf(hex + i * 2, 3, "%02x", raw[i]);
+  sessionToken = hex;
+  sessionSeenAt = millis();
+  server.sendHeader("Set-Cookie", String(COOKIE_NAME) + "=" + sessionToken +
+                                      "; Path=/; HttpOnly; SameSite=Strict");
+  Serial.println("[web] admin logged in");
+  redirect(next);
+}
+
+void handleLogout() {
+  if (!allowed(false)) return;
+  if (sessionValid()) sessionToken = "";
+  server.sendHeader("Set-Cookie", String(COOKIE_NAME) + "=; Path=/; Max-Age=0; HttpOnly");
+  redirect("/");
+}
+
 void sendSettings(const String &notice) {
   const settings::Config &conf = settings::get();
   String page = html::pageStart("Uptime Sentinel settings");
@@ -255,27 +383,34 @@ void sendSettings(const String &notice) {
   }
   page += F("<h2>TIME AND TARGETS</h2>");
   page += html::optionFields();
+  page += F("<h2>ADMIN PASSWORD</h2>");
+  page += html::adminFields();
   page += F("<button type=\"submit\">Save and restart</button></form><h2>WIFI</h2><p>Connected to <b>");
   page += html::escape(conf.ssid);
   page += F("</b>. To move the monitor to a different network, hold its wipe gesture "
             "for 5 seconds and run the setup again.</p>");
+  if (settings::hasAdmin()) page += F("<p><a href=\"/logout\">Log out</a></p>");
   page += FPSTR(html::PAGE_END);
   server.sendHeader("Cache-Control", "no-store");
   server.send(200, "text/html", page);
 }
 
 void handleSettingsGet() {
-  if (!allowed(false)) return;
+  if (!allowed(false) || !requireAdmin("/settings")) return;
   sendSettings("");
 }
 
 void handleSettingsPost() {
-  if (!allowed(true)) return;
+  if (!allowed(true) || !requireAdmin("/settings")) return;
   String hook = server.arg("hook");
   hook.trim();
-  String tz, target1, target2, error;
-  if (!settings::validHook(hook)) error = "The webhook URL must start with https://";
-  else html::readOptions(server, tz, target1, target2, error);
+  String tz, target1, target2, admin, error;
+  bool adminChange = false;
+  if (!settings::validHook(hook)) {
+    error = "The webhook URL must start with https://";
+  } else if (html::readOptions(server, tz, target1, target2, error)) {
+    html::readAdmin(server, admin, adminChange, error);
+  }
   if (error.length()) {
     sendSettings(error);
     return;
@@ -284,8 +419,10 @@ void handleSettingsPost() {
   settings::saveOptions(tz, target1, target2);
   if (server.arg("clearhook") == "1" && hook.length() == 0) settings::saveHook("");
   else if (hook.length()) settings::saveHook(hook);
-  Serial.printf("[web] settings saved, webhook %s; restarting\n",
-                settings::get().hook.length() ? "set" : "not set");
+  if (adminChange) settings::setAdminPassword(admin);
+  Serial.printf("[web] settings saved, webhook %s, admin password %s; restarting\n",
+                settings::get().hook.length() ? "set" : "not set",
+                settings::hasAdmin() ? "set" : "not set");
 
   String page = html::pageStart("Uptime Sentinel settings");
   page += F("<p>Saved. The monitor is restarting; the dashboard will be back in about "
@@ -299,14 +436,17 @@ void handleSettingsPost() {
 }  // namespace
 
 void begin() {
-  static const char *HEADERS[] = {"Origin", "Referer"};
-  server.collectHeaders(HEADERS, 2);
+  static const char *HEADERS[] = {"Origin", "Referer", "Cookie"};
+  server.collectHeaders(HEADERS, 3);
   server.on("/", HTTP_GET, handleRoot);
   server.on("/api/status", HTTP_GET, handleStatus);
   server.on("/api/log", HTTP_GET, handleLog);
   server.on("/log.csv", HTTP_GET, handleCsv);
   server.on("/settings", HTTP_GET, handleSettingsGet);
   server.on("/settings", HTTP_POST, handleSettingsPost);
+  server.on("/login", HTTP_GET, handleLoginGet);
+  server.on("/login", HTTP_POST, handleLoginPost);
+  server.on("/logout", HTTP_GET, handleLogout);
   server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
   server.begin();
 }

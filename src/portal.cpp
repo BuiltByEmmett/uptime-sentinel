@@ -58,6 +58,8 @@ void sendForm() {
     page += F("<p>A webhook is already saved. Leave this empty to keep it.</p>");
   }
   page += html::optionFields();
+  page += F("<h2>ADMIN PASSWORD</h2>");
+  page += html::adminFields();
   page += F("<button type=\"submit\">Save and connect</button></form>"
             "<p><a href=\"/rescan\">Scan for networks again</a></p>");
   page += FPSTR(html::PAGE_END);
@@ -78,13 +80,14 @@ void handleSave() {
   String hook = server.arg("hook");
   hook.trim();
 
-  String tz, target1, target2, error;
+  String tz, target1, target2, admin, error;
+  bool adminChange = false;
   if (ssid.length() == 0 || ssid.length() > 32) {
     error = "Pick a network or type its name.";
   } else if (!settings::validHook(hook)) {
     error = "The webhook URL must start with https://";
-  } else {
-    html::readOptions(server, tz, target1, target2, error);
+  } else if (html::readOptions(server, tz, target1, target2, error)) {
+    html::readAdmin(server, admin, adminChange, error);
   }
   if (error.length()) {
     notice = error;
@@ -95,8 +98,10 @@ void handleSave() {
   settings::saveWifi(ssid, pass);
   if (hook.length()) settings::saveHook(hook);
   settings::saveOptions(tz, target1, target2);
-  Serial.printf("[setup] saved network \"%s\", webhook %s\n", ssid.c_str(),
-                settings::get().hook.length() ? "set" : "not set");
+  if (adminChange) settings::setAdminPassword(admin);
+  Serial.printf("[setup] saved network \"%s\", webhook %s, admin password %s\n", ssid.c_str(),
+                settings::get().hook.length() ? "set" : "not set",
+                settings::hasAdmin() ? "set" : "not set");
 
   String page = html::pageStart("Uptime Sentinel setup");
   page += "<p>Saved. The monitor is restarting and will join <b>" + html::escape(ssid) +
