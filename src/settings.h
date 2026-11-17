@@ -13,7 +13,7 @@ struct Config {
   String tz;                   // POSIX TZ string
   String target[2];            // the two internet ping targets, dotted IPv4
   bool verified = false;       // these credentials have joined the network at least once
-  bool hookAnnounced = false;  // the "Uptime monitor online" message has been delivered
+  bool hookAnnounced = false;  // the "Uptime Sentinel online" message has been delivered
 };
 
 struct Zone {

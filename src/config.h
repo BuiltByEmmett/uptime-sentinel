@@ -27,7 +27,7 @@ constexpr uint32_t POWER_GAP_MIN_SEC = 120;
 constexpr uint32_t WIPE_HOLD_MS = 5000;     // wipe gesture held this long erases settings
 constexpr uint32_t FIRST_JOIN_TIMEOUT_MS = 30000;
 
-constexpr char AP_NAME[] = "UptimeMonitor-Setup";
+constexpr char AP_NAME[] = "Uptime Sentinel";
 constexpr char MDNS_NAME[] = "uptime";      // http://uptime.local
 constexpr char VERSION[] = "1.1.0";
 }  // namespace cfg

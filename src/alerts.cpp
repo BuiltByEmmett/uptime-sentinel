@@ -77,7 +77,7 @@ void begin(const String &webhookUrl) {
 
 void announceOnline() {
   Message msg;
-  strlcpy(msg.text, "Uptime monitor online", sizeof(msg.text));
+  strlcpy(msg.text, "Uptime Sentinel online", sizeof(msg.text));
   msg.isAnnouncement = true;
   enqueue(msg);
 }

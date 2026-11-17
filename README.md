@@ -1,9 +1,9 @@
 # Uptime Sentinel
 
-A tiny internet uptime monitor that runs on a $10 ESP32 board. It pings your
-router and two public servers every two seconds, works out whether a failure
-is your ISP's fault or just your WiFi, keeps a log of every outage, and can
-message you on Discord when the internet comes back.
+Uptime Sentinel is a tiny internet uptime monitor that runs on a $10 ESP32
+board. It pings your router and two public servers every two seconds, works
+out whether a failure is your ISP's fault or just your WiFi, keeps a log of
+every outage, and can message you on Discord when the internet comes back.
 
 No account, no cloud service, no subscription. Plug it into any USB charger
 and leave it running.
@@ -172,9 +172,9 @@ If the upload cannot find or connect to the board:
 
 ## Step 5: Connect it to your WiFi
 
-1. The board creates its own WiFi network called **UptimeMonitor-Setup**.
+1. The board creates its own WiFi network called **Uptime Sentinel**.
    The screen shows that name.
-2. On your phone, open WiFi settings and join **UptimeMonitor-Setup**. It
+2. On your phone, open WiFi settings and join **Uptime Sentinel**. It
    has no password.
 3. A setup page should open by itself. If it does not, open your browser and
    go to `192.168.4.1`. (If your phone warns that the network has no
@@ -206,7 +206,7 @@ and cannot read anything.
 5. Paste that URL into the setup page in Step 5.
 
 When a webhook is saved for the first time the monitor posts
-`Uptime monitor online`, so you know it works. After that it posts once each
+`Uptime Sentinel online`, so you know it works. After that it posts once each
 time an ISP outage ends. WiFi-only problems never send a message.
 
 Treat the webhook URL like a password: anyone who has it can post to that
@@ -380,7 +380,7 @@ Good to know:
 | The board does not show up as a port | Try another USB cable (many are charge-only), then install the USB driver from Step 2. |
 | Upload fails at `Connecting...` | Hold the BOOT button while it says `Connecting...`. |
 | My WiFi is not in the list | The ESP32 only sees 2.4 GHz networks. Tap "Scan for networks again", or type the name by hand. |
-| The setup page does not open | Stay connected to UptimeMonitor-Setup and browse to `192.168.4.1`. Turn off mobile data if your phone keeps leaving the network. |
+| The setup page does not open | Stay connected to Uptime Sentinel and browse to `192.168.4.1`. Turn off mobile data if your phone keeps leaving the network. |
 | It keeps going back to SETUP | The WiFi password was wrong, or the network is 5 GHz only. |
 | Screen is blank after flashing | You may have flashed the wrong build name. Check Step 1 and flash again. |
 | Picture is upside down | In `platformio.ini`, add `-DTFT_ROTATION=3` to your board's `build_flags` and flash again. |

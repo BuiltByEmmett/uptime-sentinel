@@ -1,4 +1,4 @@
-// Internet uptime monitor for ESP32 boards (see platformio.ini for targets).
+// Uptime Sentinel: internet uptime monitor for ESP32 boards (see platformio.ini for targets).
 // Wires the modules together; the logic lives in the files named after it.
 #include <Arduino.h>
 #include <WiFi.h>
@@ -201,7 +201,7 @@ void setup() {
 
   buttons::begin();
   display::begin();
-  display::message("UPTIME MONITOR", "Starting...");
+  display::message("UPTIME SENTINEL", "Starting...");
   settings::begin();
   storage::begin();
 
@@ -226,7 +226,7 @@ void setup() {
     // typo in the password cannot strand the device.
     char name[29];
     strlcpy(name, conf.ssid.c_str(), sizeof(name));
-    display::message("UPTIME MONITOR", "Joining WiFi:", name);
+    display::message("UPTIME SENTINEL", "Joining WiFi:", name);
     uint32_t started = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - started < cfg::FIRST_JOIN_TIMEOUT_MS) {
       buttons::poll();

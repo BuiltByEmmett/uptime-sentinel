@@ -8,7 +8,7 @@ extern const char DISCORD_ROOT_CAS[];  // src/ca_roots.cpp
 namespace alerts {
 
 void begin(const String &webhookUrl);
-void announceOnline();                                   // "Uptime monitor online"
+void announceOnline();                                   // "Uptime Sentinel online"
 void outageEnded(uint32_t durationSec, uint32_t endEpoch);  // endEpoch 0 = clock unknown
 
 }  // namespace alerts
