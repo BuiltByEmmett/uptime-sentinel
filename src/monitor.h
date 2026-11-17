@@ -1,4 +1,4 @@
-// Outage logic: turns rounds into ONLINE, an outage (ISP or WIFI) or a
+// Outage logic: turns rounds into ONLINE, an outage (ISP, WIFI or LAN) or a
 // degraded state (SLOW or DNS), and keeps one hour of latency history.
 #pragma once
 #include <Arduino.h>
@@ -8,7 +8,7 @@
 
 namespace monitor {
 
-enum class RoundClass : uint8_t { OK, ISP, WIFI };
+enum class RoundClass : uint8_t { OK, ISP, WIFI, LAN };
 
 struct State {
   bool haveData = false;

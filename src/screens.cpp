@@ -19,9 +19,9 @@ bool capture(const char *) { return false; }
 #include "display.h"
 #include "monitor.h"
 #include "stats.h"
-#include <WiFi.h>
 
 #include "logview.h"
+#include "net.h"
 #include "settings.h"
 #include "timekeeper.h"
 
@@ -46,7 +46,7 @@ uint16_t causeColor(Cause c) {
     case Cause::ISP: return color::ORANGE;
     case Cause::SLOW:
     case Cause::DNS: return color::YELLOW;
-    default: return color::LABEL;  // WIFI and POWER do not count against the ISP
+    default: return color::LABEL;  // WIFI, LAN and POWER do not count against the ISP
   }
 }
 Label title(6, 4, 180, &Font10, CAP10, LEFT);
@@ -393,8 +393,8 @@ void updateUptime() {
   stats::Stats s = stats::compute();
   // The address of the web page lives here, for when uptime.local will not resolve.
   char heading[32];
-  if (WiFi.status() == WL_CONNECTED) {
-    snprintf(heading, sizeof(heading), "UPTIME %s", WiFi.localIP().toString().c_str());
+  if (net::up()) {
+    snprintf(heading, sizeof(heading), "UPTIME %s", net::localIP().toString().c_str());
   } else {
     strlcpy(heading, "UPTIME", sizeof(heading));
   }

@@ -12,7 +12,8 @@ enum Target { ROUTER = 0, TARGET1 = 1, TARGET2 = 2 };
 struct Round {
   int16_t rtt[TARGETS];  // milliseconds, -1 = no reply
   uint32_t monoSec;      // seconds since boot when the round started
-  bool linkUp;           // WiFi association state when the round started
+  bool linkUp;           // the network link was up when the round started
+  bool wired;            // that link is (or was last) a wired port, not WiFi
   int8_t dns;            // 1 = lookup answered, 0 = failed, -1 = not checked this round
 };
 

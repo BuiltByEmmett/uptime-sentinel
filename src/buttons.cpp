@@ -57,7 +57,7 @@ Event shortOrLong(const Input &in, uint32_t maxMs) {
 void begin() {
   // INPUT_PULLUP is ignored on input-only pins (34-39); those boards have
   // their own pull-up resistors.
-  pinMode(btn1.pin, INPUT_PULLUP);
+  if (btn1.pin >= 0) pinMode(btn1.pin, INPUT_PULLUP);
   if (btn2.pin >= 0) pinMode(btn2.pin, INPUT_PULLUP);
   if (touch.pin >= 0) pinMode(touch.pin, INPUT_PULLUP);
 }

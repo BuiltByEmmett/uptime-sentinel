@@ -1,9 +1,9 @@
 #include "alerts.h"
 
 #include <HTTPClient.h>
-#include <WiFi.h>
 #include <WiFiClientSecure.h>
 
+#include "net.h"
 #include "settings.h"
 #include "timekeeper.h"
 
@@ -49,7 +49,7 @@ void task(void *) {
   for (;;) {
     if (xQueueReceive(queue, &msg, portMAX_DELAY) != pdTRUE) continue;
     for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      while (WiFi.status() != WL_CONNECTED) vTaskDelay(pdMS_TO_TICKS(1000));
+      while (!net::up()) vTaskDelay(pdMS_TO_TICKS(1000));
       int code = post(msg.text);
       if (code >= 200 && code < 300) {
         Serial.printf("[alert] delivered (HTTP %d): %s\n", code, msg.text);

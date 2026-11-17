@@ -90,6 +90,8 @@ in Step 4, and it is part of the name of every firmware file.
 | Any ESP32 dev board, no screen | `esp32-headless` | none | BOOT button | Compiles; not yet tested on hardware |
 | Any ESP32-S3 dev board, no screen | `esp32s3-headless` | none | BOOT button | Compiles; not yet tested on hardware |
 | Any ESP32-C3 dev board, no screen | `esp32c3-headless` | none | BOOT button | Compiles; not yet tested on hardware |
+| WT32-ETH01 (Ethernet) | `wt32-eth01` | none | none | Compiles; not yet tested on hardware |
+| Olimex ESP32-POE (Ethernet) | `esp32-poe` | none | BUT1 button | Compiles; not yet tested on hardware |
 
 Notes:
 
@@ -102,6 +104,8 @@ Notes:
 - **No screen?** The headless builds do everything except draw: pinging,
   outage logging and Discord alerts all work, and you can read the log over
   USB (see [Serial console](#serial-console)).
+- **Ethernet boards** use the cable whenever it is plugged in and fall back
+  to WiFi when it is not. See [Ethernet boards](#ethernet-boards).
 - **Different board?** See [Adding another board](#adding-another-board).
 
 <!-- TODO(photo): needs a real camera. Photograph the bare board, front and
@@ -241,6 +245,24 @@ try again.
 
 ![The setup page](docs/photos/setup.png)
 
+### Ethernet boards
+
+The `wt32-eth01` and `esp32-poe` builds have a wired network port.
+
+- Plug in the network cable before powering the board and there is nothing
+  to set up: it gets an address from your router and starts monitoring.
+  Open the dashboard to set the timezone, a webhook or an admin password.
+- With no cable and no WiFi saved, the board starts the **Uptime Sentinel**
+  setup network as in the steps above. Plugging the cable in ends setup.
+- To give a cabled board a WiFi network to fall back to, enter it on the
+  dashboard's Settings page.
+- While the cable is linked the board uses only Ethernet. If the cable is
+  unplugged it joins the saved WiFi, and it returns to Ethernet when the
+  cable is back.
+- The **WT32-ETH01** has no USB port and no button. Flash it through a
+  USB-serial adapter (hold IO0 to GND while it powers up), and flash it
+  again to wipe its settings.
+
 ## Step 6 (optional): Discord alerts
 
 A webhook lets the monitor post into one Discord channel. It is not a bot
@@ -367,7 +389,7 @@ loader cannot be overwritten.
 |---|---|---|---|
 | T-Display, T-Display-S3 | Button 1 | Button 2 | Hold both buttons 5 s |
 | Cheap Yellow Display | Tap the screen | Touch and hold about 1 s | Hold BOOT 5 s |
-| Headless boards | n/a | n/a | Hold BOOT 5 s |
+| Headless boards | n/a | n/a | Hold BOOT 5 s (BUT1 on the ESP32-POE; the WT32-ETH01 has no button) |
 
 On one-button boards, a short press of BOOT also moves to the next screen
 and a longer press (about 1 second) is the screen action.
@@ -404,7 +426,8 @@ for the range are along the bottom.
 ### 3. OUTAGES
 
 The log, newest first: when it started, how long it lasted, and a tag.
-`ISP` is orange, `SLOW` and `DNS` are yellow, `WIFI` and `POWER` are grey.
+`ISP` is orange, `SLOW` and `DNS` are yellow, `WIFI`, `LAN` and `POWER` are
+grey.
 Anything still in progress sits on the top row with its duration counting
 up.
 
@@ -428,7 +451,7 @@ timeout.
 |---|---|---|
 | replies | at least one replies | OK |
 | replies | both fail | ISP failure |
-| fails | both fail | WIFI failure (local link only) |
+| fails | both fail | WIFI failure (local link only); `LAN` on a board that is using Ethernet |
 | fails | at least one replies | OK (the reply had to come through the router) |
 
 - An outage is declared after **3 failed rounds in a row**, and is
@@ -464,7 +487,7 @@ power cuts and the monitor being unplugged; it cannot tell those apart.
 ### What counts against uptime
 
 **Uptime percentages and outage counts use ISP outages only.** `WIFI`,
-`SLOW`, `DNS` and `POWER` are listed in the log but never affect the
+`LAN`, `SLOW`, `DNS` and `POWER` are listed in the log but never affect the
 statistics, and only ISP outages send a Discord message. The idea is that
 the monitor sits on WiFi while the things you care about may be wired, so a
 weak WiFi signal at the monitor should not count against your ISP.
@@ -555,6 +578,7 @@ the name to the lists in `.github/workflows/` and to `flasher/boards.json`.
 | `TOUCH_IRQ_PIN` | XPT2046 touch interrupt pin, if the board has one |
 | `POWER_ON_PIN` | A pin that must be held high to power the screen, if any |
 | `HEADLESS` | Build with no display at all |
+| `HAS_ETH` | The board has a wired network port. Its pins come from the PlatformIO board definition, or from `ETH_PHY_*` flags |
 
 The UI is drawn on a 240x135 grid and scaled, so pick the largest scale that
 fits: the scaled size is 240x135, 300x169 or 320x180. It is centred on
@@ -570,6 +594,7 @@ real hardware.
 |---|---|
 | `src/ping.cpp` | ICMP echo on raw sockets, in its own task (no ping library) |
 | `src/ping.cpp` (also) | DNS lookup check, sent straight to the network's DNS server |
+| `src/net.cpp` | The network link: WiFi, plus Ethernet on boards that have it |
 | `src/monitor.cpp` | Outage, SLOW and DNS logic; latency history |
 | `src/storage.cpp` | Outage log and power heartbeat on LittleFS |
 | `src/logview.cpp` | The log as displayed, with the ongoing event on top |

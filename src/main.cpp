@@ -9,6 +9,7 @@
 #include "config.h"
 #include "display.h"
 #include "monitor.h"
+#include "net.h"
 #include "ping.h"
 #include "portal.h"
 #include "screens.h"
@@ -21,7 +22,7 @@
 namespace {
 
 constexpr uint32_t REDRAW_MS = 250;
-constexpr uint32_t RECONNECT_MS = 30000;
+constexpr uint32_t ETH_WAIT_MS = 10000;  // a cable gets this long to come up before setup starts
 
 uint32_t ispDownCarry = 0;  // ISP downtime in the current run of back-to-back outages
 const char *simName = "";
@@ -57,6 +58,12 @@ bool serviceWipe() {
 
 bool portalIdle() {
   buttons::poll();
+  // A cable plugged in while the setup network is up makes setup unnecessary.
+  if (net::HAS_ETHERNET && net::ethernetReady()) {
+    Serial.println("[boot] Ethernet is up, leaving setup");
+    delay(100);
+    ESP.restart();
+  }
   return serviceWipe();
 }
 
@@ -92,27 +99,6 @@ void printRound(const ping::Round &r) {
   Serial.printf(" -> %s%s | %s%s%s%s\n", monitor::className(m.lastClass), simName,
                 monitor::stateName(), outage ? " (" : "", outage ? monitor::causeName(cause) : "",
                 outage ? ")" : "");
-}
-
-void serviceWifi() {
-  static bool wasUp = false;
-  static uint32_t lastKick = 0;
-  bool up = WiFi.status() == WL_CONNECTED;
-  if (up != wasUp) {
-    wasUp = up;
-    if (up) {
-      Serial.printf("[wifi] connected ip=%s gateway=%s rssi=%d\n",
-                    WiFi.localIP().toString().c_str(), WiFi.gatewayIP().toString().c_str(),
-                    WiFi.RSSI());
-    } else {
-      Serial.println("[wifi] disconnected");
-      lastKick = millis();
-    }
-  }
-  if (!up && millis() - lastKick >= RECONNECT_MS) {
-    lastKick = millis();
-    WiFi.reconnect();
-  }
 }
 
 void serviceClock() {
@@ -208,7 +194,10 @@ void setup() {
   settings::begin();
   storage::begin();
 
-  if (!settings::hasWifi()) {
+  // Boards with a wired port can run on the cable alone; everything else
+  // needs WiFi details before it can do anything.
+  net::beginEthernet();
+  if (!settings::hasWifi() && !net::waitEthernet(ETH_WAIT_MS)) {
     Serial.println("[boot] no WiFi saved, starting setup portal");
     portal::run("", portalIdle);
   }
@@ -217,31 +206,28 @@ void setup() {
   Serial.printf("[boot] network \"%s\", webhook %s\n", conf.ssid.c_str(),
                 conf.hook.length() ? "set" : "not set");
 
-  WiFi.persistent(false);
-  WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);  // modem sleep would add tens of ms to every ping
-  WiFi.setAutoReconnect(true);
-  WiFi.begin(conf.ssid.c_str(), conf.pass.length() ? conf.pass.c_str() : nullptr);
+  net::beginWifi(conf.ssid, conf.pass);
   timekeeper::begin();
 
-  if (!conf.verified) {
+  if (settings::hasWifi() && !conf.verified) {
     // Fresh credentials: prove them once, otherwise go back to setup so a
     // typo in the password cannot strand the device.
     char name[29];
     strlcpy(name, conf.ssid.c_str(), sizeof(name));
     display::message("UPTIME SENTINEL", "Joining WiFi:", name);
     uint32_t started = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - started < cfg::FIRST_JOIN_TIMEOUT_MS) {
+    while (!net::up() && millis() - started < cfg::FIRST_JOIN_TIMEOUT_MS) {
       buttons::poll();
       serviceWipe();
       delay(20);
     }
-    if (WiFi.status() != WL_CONNECTED) {
+    if (!net::up()) {
       Serial.println("[boot] could not join, returning to setup portal");
       WiFi.disconnect(true);
       portal::run("Couldn't join WiFi. Retry.", portalIdle);
     }
-    settings::setVerified();
+    // On a cable the WiFi details stay unproven until they are first needed.
+    if (net::wifiUp()) settings::setVerified();
   }
 
   alerts::begin(conf.hook);
@@ -265,7 +251,7 @@ void loop() {
   bool fresh = false;
   ping::Round round;
   while (ping::nextRound(round)) {
-    // WiFi takes a few seconds to join after power-on; do not count that as
+    // The link takes a few seconds to come up after power-on; do not count that as
     // an outage. If it still has not joined after 20 seconds, it is one.
     static bool everLinked = false;
     everLinked = everLinked || round.linkUp;
@@ -276,7 +262,7 @@ void loop() {
   }
 
   storage::loop();
-  serviceWifi();
+  net::loop();
   serviceClock();
   serviceSerial();
   web::loop();

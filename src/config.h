@@ -59,8 +59,10 @@ constexpr uint16_t YELLOW = rgb565(0xFF, 0xD2, 0x3D);  // degraded: slow or DNS 
 
 // What an entry in the outage log was. Stored on flash: never renumber.
 //   ISP    router answers, internet does not          (counts against uptime)
-//   WIFI   router does not answer
+//   WIFI   router does not answer, monitor on WiFi
 //   SLOW   internet reachable but lossy or very slow
 //   DNS    internet reachable but name lookups fail
 //   POWER  the monitor itself was without power
-enum class Cause : uint8_t { ISP = 0, WIFI = 1, SLOW = 2, DNS = 3, POWER = 4 };
+//   LAN    router does not answer, monitor on a wired port
+enum class Cause : uint8_t { ISP = 0, WIFI = 1, SLOW = 2, DNS = 3, POWER = 4, LAN = 5 };
+constexpr uint8_t CAUSE_MAX = 5;  // highest value a stored log entry may carry

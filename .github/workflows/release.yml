@@ -41,6 +41,8 @@ jobs:
           - esp32-headless
           - esp32s3-headless
           - esp32c3-headless
+          - wt32-eth01
+          - esp32-poe
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

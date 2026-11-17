@@ -3,7 +3,6 @@
 #include <ESPmDNS.h>
 #include <Update.h>
 #include <WebServer.h>
-#include <WiFi.h>
 #include <esp_app_format.h>
 #include <esp_ota_ops.h>
 #include <esp_system.h>
@@ -14,6 +13,7 @@
 #include "html.h"
 #include "logview.h"
 #include "monitor.h"
+#include "net.h"
 #include "screens.h"
 #include "settings.h"
 #include "stats.h"
@@ -83,7 +83,7 @@ const char DASHBOARD[] PROGMEM = R"HTML(
 <p id="foot"></p>
 <script>
 const $=i=>document.getElementById(i);
-const cls={ISP:'o',SLOW:'y',DNS:'y',WIFI:'m',POWER:'m'};
+const cls={ISP:'o',SLOW:'y',DNS:'y',WIFI:'m',LAN:'m',POWER:'m'};
 const txt=(el,v)=>{el.textContent=v};
 const ms=v=>v<0?'--':v+' ms';
 function draw(h){const c=$('g'),x=c.getContext('2d'),W=c.width,H=c.height;x.clearRect(0,0,W,H);
@@ -103,7 +103,7 @@ s.targets.forEach(t=>{const d=document.createElement('div');d.className='cell';
 d.textContent=t.name;const b=document.createElement('b');b.textContent=ms(t.ms);
 if(t.ms<0)b.className='o';d.appendChild(b);tg.appendChild(d)});
 draw(s.history);
-txt($('foot'),'v'+s.version+' · '+s.time+' · WiFi '+s.rssi+' dBm');
+txt($('foot'),'v'+s.version+' · '+s.time+' · '+s.link);
 }catch(e){txt($('sub'),'Cannot reach the monitor')}}
 async function log(){try{const r=await(await fetch('/api/log')).json();
 const b=$('log');b.textContent='';
@@ -123,7 +123,7 @@ bool requestOk(bool isPost) {
   String host = server.hostHeader();
   host.toLowerCase();
   String mdns = String(cfg::MDNS_NAME) + ".local";
-  bool hostOk = host == WiFi.localIP().toString() || host == mdns;
+  bool hostOk = host == net::localIP().toString() || host == mdns;
   bool originOk = true;
   if (isPost) {
     String origin = server.header("Origin");
@@ -225,7 +225,7 @@ void handleStatus() {
   if (monitor::activeEvent(cause, startMono)) {
     String lasted = duration(timekeeper::mono() - startMono);
     if (cause == Cause::ISP) detail = "ISP outage for " + lasted;
-    else if (cause == Cause::WIFI) detail = "No reply from the router for " + lasted;
+    else if (cause == Cause::WIFI || cause == Cause::LAN) detail = "No reply from the router for " + lasted;
     else if (cause == Cause::DNS) detail = "DNS lookups failing for " + lasted;
     else detail = "Slow or losing packets for " + lasted;
   }
@@ -255,7 +255,7 @@ void handleStatus() {
   json += ",\"longest\":\"" + (s.longestSec ? duration(s.longestSec) : String("--")) + "\"";
   json += ",\"watching\":\"" + duration(s.watchingSec) + "\"";
   json += ",\"time\":\"" + String(clock) + "\"";
-  json += ",\"rssi\":" + String(WiFi.RSSI());
+  json += ",\"link\":\"" + net::linkText() + "\"";
   json += ",\"version\":\"";
   json += cfg::VERSION;
   json += "\",\"board\":\"";
@@ -621,10 +621,28 @@ void sendSettings(const String &notice) {
   page += html::optionFields();
   page += F("<h2>ADMIN PASSWORD</h2>");
   page += html::adminFields();
-  page += F("<button type=\"submit\">Save and restart</button></form><h2>WIFI</h2><p>Connected to <b>");
-  page += html::escape(conf.ssid);
-  page += F("</b>. To move the monitor to a different network, hold its wipe gesture "
-            "for 5 seconds and run the setup again.</p>");
+  if (net::HAS_ETHERNET) {
+    // A board that was set up over its cable never saw the setup portal, so
+    // this is where it learns a WiFi network to fall back to.
+    page += F("<h2>WIFI (USED WHEN THE CABLE IS UNPLUGGED)</h2>"
+              "<label for=\"wssid\">Network name, or empty for none</label>"
+              "<input type=\"text\" id=\"wssid\" name=\"wssid\" maxlength=\"32\" "
+              "autocapitalize=\"none\" value=\"");
+    page += html::escape(conf.ssid);
+    page += F("\"><label for=\"wpass\">WiFi password</label>"
+              "<input id=\"wpass\" name=\"wpass\" type=\"password\" maxlength=\"64\" "
+              "autocomplete=\"off\">");
+    if (conf.ssid.length()) {
+      page += F("<p>The saved password is not shown. Leave the box empty to keep it.</p>");
+    }
+    page += F("<button type=\"submit\">Save and restart</button></form>");
+  } else {
+    page += F("<button type=\"submit\">Save and restart</button></form><h2>WIFI</h2>"
+              "<p>Connected to <b>");
+    page += html::escape(conf.ssid);
+    page += F("</b>. To move the monitor to a different network, hold its wipe gesture "
+              "for 5 seconds and run the setup again.</p>");
+  }
   if (settings::hasAdmin()) page += F("<p><a href=\"/logout\">Log out</a></p>");
   page += FPSTR(html::PAGE_END);
   server.sendHeader("Cache-Control", "no-store");
@@ -647,11 +665,22 @@ void handleSettingsPost() {
   } else if (html::readOptions(server, tz, target1, target2, error)) {
     html::readAdmin(server, admin, adminChange, error);
   }
+  String wifiName = server.arg("wssid");
+  wifiName.trim();
+  if (net::HAS_ETHERNET && error.length() == 0 && wifiName.length() > 32) {
+    error = "The WiFi network name is too long.";
+  }
   if (error.length()) {
     sendSettings(error);
     return;
   }
 
+  if (net::HAS_ETHERNET) {
+    const settings::Config &old = settings::get();
+    String wifiPass = server.arg("wpass");
+    if (wifiPass.length() == 0 && wifiName == old.ssid) wifiPass = old.pass;
+    if (wifiName != old.ssid || wifiPass != old.pass) settings::saveWifi(wifiName, wifiPass);
+  }
   settings::saveOptions(tz, target1, target2);
   if (server.arg("clearhook") == "1" && hook.length() == 0) settings::saveHook("");
   else if (hook.length()) settings::saveHook(hook);
@@ -693,13 +722,13 @@ void begin() {
 }
 
 void loop() {
-  // mDNS needs an IP address, so start it on the first pass with WiFi up.
-  if (!mdnsStarted && WiFi.status() == WL_CONNECTED) {
+  // mDNS needs an IP address, so start it on the first pass with the link up.
+  if (!mdnsStarted && net::up()) {
     if (MDNS.begin(cfg::MDNS_NAME)) {
       MDNS.addService("http", "tcp", 80);
       mdnsStarted = true;
       Serial.printf("[web] dashboard at http://%s.local or http://%s\n", cfg::MDNS_NAME,
-                    WiFi.localIP().toString().c_str());
+                    net::localIP().toString().c_str());
     }
   }
   server.handleClient();

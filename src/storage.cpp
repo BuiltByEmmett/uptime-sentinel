@@ -120,7 +120,7 @@ void recoverInterruptedOutage() {
   OpenMarker m;
   bool ok = f.read(reinterpret_cast<uint8_t *>(&m), sizeof(m)) == sizeof(m) &&
             m.magic == OPEN_MAGIC && m.lastSeen >= m.start &&
-            m.cause <= static_cast<uint8_t>(Cause::POWER);
+            m.cause <= CAUSE_MAX;
   f.close();
   LittleFS.remove(OPEN_PATH);
   if (!ok) return;

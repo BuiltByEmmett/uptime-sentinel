@@ -6,10 +6,12 @@
 // SCREEN_W, SCREEN_H  panel size in pixels after rotation
 // TFT_ROTATION        TFT_eSPI rotation (0-3); add 2 if the picture is upside down
 // UI_SCALE_NUM/DEN    the UI is designed at 240x135 and drawn at NUM/DEN size
-// BTN1_PIN            button 1 (active low). Needed on every board.
+// BTN1_PIN            button 1 (active low), or -1 if the board has no button at all
 // BTN2_PIN            button 2 (active low), or -1 if the board has one button
 // TOUCH_IRQ_PIN       XPT2046 touch interrupt pin (active low), or -1
 // POWER_ON_PIN        pin that must be driven high to keep the screen powered, or -1
+// HAS_ETH             the board has a wired network port (see net.h). Its pins come
+//                     from the board definition, or from ETH_PHY_* build flags.
 
 #ifndef SCREEN_W
 #define SCREEN_W 240

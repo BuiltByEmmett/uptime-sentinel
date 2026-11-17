@@ -1,11 +1,12 @@
 #include "ping.h"
 
-#include <WiFi.h>
+#include <IPAddress.h>
 #include <esp_timer.h>
 #include <lwip/inet.h>
 #include <lwip/sockets.h>
 
 #include "config.h"
+#include "net.h"
 #include "settings.h"
 
 namespace ping {
@@ -204,12 +205,13 @@ void task(void *) {
   for (;;) {
     Round round;
     round.monoSec = static_cast<uint32_t>(esp_timer_get_time() / 1000000);
-    round.linkUp = WiFi.status() == WL_CONNECTED;
+    round.linkUp = net::up();
+    round.wired = net::wired();
     round.dns = -1;
 
     uint32_t addrs[TARGETS] = {0, 0, 0};
     if (round.linkUp) {
-      addrs[ROUTER] = static_cast<uint32_t>(WiFi.gatewayIP());
+      addrs[ROUTER] = static_cast<uint32_t>(net::gatewayIP());
       addrs[TARGET1] = settings::targetAddr(0);
       addrs[TARGET2] = settings::targetAddr(1);
     }
@@ -230,7 +232,7 @@ void task(void *) {
     // DNS only means something when the internet itself is reachable.
     bool internet = round.rtt[TARGET1] >= 0 || round.rtt[TARGET2] >= 0;
     bool due = dnsFailing || roundNo % cfg::DNS_EVERY_ROUNDS == 0 || sim == Sim::DNS;
-    uint32_t server = static_cast<uint32_t>(WiFi.dnsIP(0));
+    uint32_t server = static_cast<uint32_t>(net::dnsIP());
     if (internet && due && server != 0) {
       bool ok = sim == Sim::DNS ? false : dnsLookup(server, DNS_NAMES[dnsName]);
       dnsName = (dnsName + 1) % (sizeof(DNS_NAMES) / sizeof(DNS_NAMES[0]));

@@ -26,7 +26,11 @@ Soft softStreakClass = Soft::NONE;
 uint8_t softStreak = 0;
 uint32_t softStreakStart = 0;
 
-Cause toCause(RoundClass c) { return c == RoundClass::WIFI ? Cause::WIFI : Cause::ISP; }
+Cause toCause(RoundClass c) {
+  if (c == RoundClass::WIFI) return Cause::WIFI;
+  if (c == RoundClass::LAN) return Cause::LAN;
+  return Cause::ISP;
+}
 
 void pushHistory(int16_t internetMs) {
   history[histHead] = internetMs < 0 ? HIST_FAIL : static_cast<uint16_t>(internetMs);
@@ -200,13 +204,15 @@ RoundClass classify(const ping::Round &r) {
   bool internet = r.rtt[ping::TARGET1] >= 0 || r.rtt[ping::TARGET2] >= 0;
   if (internet) return RoundClass::OK;
   if (r.rtt[ping::ROUTER] >= 0) return RoundClass::ISP;
-  return RoundClass::WIFI;
+  // The local link failed. Which one it is decides the tag.
+  return r.wired ? RoundClass::LAN : RoundClass::WIFI;
 }
 
 const char *className(RoundClass c) {
   switch (c) {
     case RoundClass::OK: return "OK";
     case RoundClass::ISP: return "ISP-FAIL";
+    case RoundClass::LAN: return "LAN-FAIL";
     default: return "WIFI-FAIL";
   }
 }
@@ -217,6 +223,7 @@ const char *causeName(Cause c) {
     case Cause::WIFI: return "WIFI";
     case Cause::SLOW: return "SLOW";
     case Cause::DNS: return "DNS";
+    case Cause::LAN: return "LAN";
     default: return "POWER";
   }
 }
