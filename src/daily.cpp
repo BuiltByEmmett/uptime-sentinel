@@ -169,6 +169,10 @@ void formatDay(uint16_t day, char *out, size_t len) {
   snprintf(out, len, "%04d-%02d-%02d", y, m, d);
 }
 
+void split(Entry *list, size_t &n, size_t max, uint32_t start, uint32_t duration) {
+  addSpan(list, n, max, start, duration);
+}
+
 void begin() {
   if (!storage::available()) return;
   ready = true;

@@ -23,6 +23,10 @@ void loop();
 // is split between the days. Safe to call before begin().
 void add(uint32_t start, uint32_t duration);
 
+// Adds [start, start + duration) to a sorted list of days, split at each
+// local midnight, counting one outage on the day it began.
+void split(Entry *list, size_t &n, size_t max, uint32_t start, uint32_t duration);
+
 // The stored days, oldest first, with the outage in progress (if any) added.
 size_t collect(Entry *out, size_t max);
 

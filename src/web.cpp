@@ -16,6 +16,7 @@
 #include "monitor.h"
 #include "net.h"
 #include "pubip.h"
+#include "report.h"
 #include "screens.h"
 #include "settings.h"
 #include "stats.h"
@@ -97,7 +98,7 @@ const char DASHBOARD[] PROGMEM = R"HTML(
 <h2>OUTAGE LOG</h2>
 <table><thead><tr><th>Started</th><th>Lasted</th><th>Cause</th></tr></thead>
 <tbody id="log"></tbody></table>
-<p><a href="/log.csv">Download log (CSV)</a> &middot; <a href="/ip">Public IP log</a>
+<p><a href="/report">ISP report</a> &middot; <a href="/log.csv">Download log (CSV)</a> &middot; <a href="/ip">Public IP log</a>
 &middot; <a href="/settings">Settings</a>
 &middot; <a href="/update">Update firmware</a></p>
 <p id="foot"></p>
@@ -416,6 +417,11 @@ void handleCsv() {
   }
   if (chunk.length()) server.sendContent(chunk);
   server.sendContent("");
+}
+
+void handleReport() {
+  if (!allowed(false)) return;
+  report::send(server);
 }
 
 // The public IP log. This page is the only place the address is shown.
@@ -860,6 +866,7 @@ void begin() {
   server.on("/api/log", HTTP_GET, handleLog);
   server.on("/api/days", HTTP_GET, handleDays);
   server.on("/log.csv", HTTP_GET, handleCsv);
+  server.on("/report", HTTP_GET, handleReport);
   server.on("/ip", HTTP_GET, handleIp);
   server.on("/settings", HTTP_GET, handleSettingsGet);
   server.on("/settings", HTTP_POST, handleSettingsPost);

@@ -311,6 +311,8 @@ browser on any phone or computer on the same network.
   of the 200-entry log does not empty the calendar.
 - **Outage log:** all 200 entries, with anything still in progress at the
   top.
+- **ISP report:** a plain page for one month, made to be printed or saved
+  as a PDF. See [ISP report](#isp-report).
 - **Download log (CSV):** every entry with full date, time and duration in
   seconds. Handy as evidence when you complain to your ISP.
 - **Public IP log:** your current public address and its last 50 changes.
@@ -361,6 +363,30 @@ to get that screen whichever one the display is on, for example
 since it shows nothing the dashboard does not. The pictures of the four
 screens in this README were made this way. Boards without a display answer
 404.
+
+## ISP report
+
+**<http://uptime.local/report>** is a clean, printable summary of one
+calendar month, for sending to your ISP. Pick the month at the top, then
+press **Print or save as PDF** (choose "Save as PDF" as the printer). The
+month picker and buttons are left out of the printout.
+
+It shows the period the monitor was watching, the number of ISP outages,
+total downtime, uptime as a percentage, the longest outage and the worst
+day, followed by every ISP outage with its start, end, duration and type.
+Only ISP outages are listed: WiFi, router, SLOW, DNS and power events are
+not the ISP's doing and are left out. Time the monitor spent without power
+is shown and taken out of the uptime sum instead of being counted either
+way.
+
+The page says plainly that the figures come from one device on your
+network and explains how an outage is detected, so the reader knows what
+they are looking at. It does not contain your public IP address, your WiFi
+name or anything else about your network.
+
+The report is built from the outage log, which keeps the latest 200
+entries. If older entries of the chosen month have already been replaced,
+the page says so.
 
 ## Public IP log
 
@@ -695,6 +721,7 @@ real hardware.
 | `src/storage.cpp` | Outage log and power heartbeat on LittleFS |
 | `src/daily.cpp` | Uptime calendar: ISP downtime per day for 90 days, on LittleFS |
 | `src/logview.cpp` | The log as displayed, with the ongoing event on top |
+| `src/report.cpp` | The printable monthly ISP report |
 | `src/web.cpp` | Web dashboard, JSON API, CSV export, public IP page, settings page, admin login, firmware update, screenshots |
 | `src/html.cpp` | Page styling and form fields shared with the setup portal |
 | `src/stats.cpp` | Uptime percentages (ISP outages only) |
