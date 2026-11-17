@@ -8,8 +8,12 @@ every outage, and can message you on Discord when the internet comes back.
 No account, no cloud service, no subscription. Plug it into any USB charger
 and leave it running.
 
-<!-- PHOTO: hero shot of the device on a desk showing the STATUS screen -->
-![Uptime Sentinel showing the STATUS screen](docs/photos/hero.jpg)
+<!-- TODO(photo): needs a real camera. Take a hero shot of the device on a
+     desk showing the STATUS screen, save it as docs/photos/hero.jpg, then
+     replace this comment with:
+     ![Uptime Sentinel showing the STATUS screen](docs/photos/hero.jpg) -->
+
+![The STATUS screen](docs/photos/screen-status.png)
 
 **Contents**
 
@@ -96,8 +100,9 @@ Notes:
   USB (see [Serial console](#serial-console)).
 - **Different board?** See [Adding another board](#adding-another-board).
 
-<!-- PHOTO: the bare board, front and back -->
-![The T-Display board](docs/photos/board.jpg)
+<!-- TODO(photo): needs a real camera. Photograph the bare board, front and
+     back, save it as docs/photos/board.jpg, then replace this comment with:
+     ![The T-Display board](docs/photos/board.jpg) -->
 
 ## Step 2: Install the tools
 
@@ -195,8 +200,7 @@ The board restarts, joins your WiFi and starts monitoring. If the password
 was wrong, the setup network comes back after about 30 seconds so you can
 try again.
 
-<!-- PHOTO: phone showing the setup page next to the device -->
-![Setup page on a phone](docs/photos/setup.jpg)
+![The setup page](docs/photos/setup.png)
 
 ## Step 6 (optional): Discord alerts
 
@@ -266,8 +270,17 @@ Until one is set, that page is switched off completely.
 The dashboard never shows the saved webhook URL or your WiFi password, and
 it refuses requests that come from other websites.
 
-<!-- PHOTO: screenshot of the web dashboard -->
 ![Web dashboard](docs/photos/dashboard.png)
+
+### Screenshots of the display
+
+`http://uptime.local/screenshot.bmp` returns a picture of what the display
+is showing right now. Add `?screen=status`, `latency`, `outages` or `uptime`
+to get that screen whichever one the display is on, for example
+`http://uptime.local/screenshot.bmp?screen=latency`. It needs no password,
+since it shows nothing the dashboard does not. The pictures of the four
+screens in this README were made this way. Boards without a display answer
+404.
 
 ## Updating the firmware
 
@@ -339,8 +352,7 @@ A large ONLINE (green), OFFLINE (orange), or SLOW / NO DNS (yellow), the
 current internet latency, packet loss over the last five minutes, and the
 latest reply time from the router and the two ping targets.
 
-<!-- PHOTO: STATUS screen -->
-![STATUS screen](docs/photos/screen-status.jpg)
+![STATUS screen](docs/photos/screen-status.png)
 
 ### 2. LATENCY
 
@@ -348,8 +360,7 @@ A bar graph of internet latency. Green bars are scaled to the slowest reply
 in view; a failed ping is a full-height orange bar. MIN, AVG, MAX and LOSS
 for the range are along the bottom.
 
-<!-- PHOTO: LATENCY screen -->
-![LATENCY screen](docs/photos/screen-latency.jpg)
+![LATENCY screen](docs/photos/screen-latency.png)
 
 ### 3. OUTAGES
 
@@ -358,17 +369,16 @@ The log, newest first: when it started, how long it lasted, and a tag.
 Anything still in progress sits on the top row with its duration counting
 up.
 
-<!-- PHOTO: OUTAGES screen -->
-![OUTAGES screen](docs/photos/screen-outages.jpg)
+![OUTAGES screen](docs/photos/screen-outages.png)
 
 ### 4. UPTIME
 
 Uptime over the last 24 hours and 7 days, the number of ISP outages, the
 longest one, and how long the monitor has been watching. The header also
-shows the monitor's IP address, for opening the web dashboard.
+shows the monitor's IP address, for opening the web dashboard. (It is
+covered up in the picture below.)
 
-<!-- PHOTO: UPTIME screen -->
-![UPTIME screen](docs/photos/screen-uptime.jpg)
+![UPTIME screen](docs/photos/screen-uptime.png)
 
 ## How outages are classified
 
@@ -522,14 +532,14 @@ real hardware.
 | `src/monitor.cpp` | Outage, SLOW and DNS logic; latency history |
 | `src/storage.cpp` | Outage log and power heartbeat on LittleFS |
 | `src/logview.cpp` | The log as displayed, with the ongoing event on top |
-| `src/web.cpp` | Web dashboard, JSON API, CSV export, settings page, admin login, firmware update |
+| `src/web.cpp` | Web dashboard, JSON API, CSV export, settings page, admin login, firmware update, screenshots |
 | `src/html.cpp` | Page styling and form fields shared with the setup portal |
 | `src/stats.cpp` | Uptime percentages (ISP outages only) |
 | `src/timekeeper.cpp` | NTP, timezone, time formatting |
 | `src/settings.cpp` | WiFi, webhook and other settings in NVS; admin password hash |
 | `src/portal.cpp` | Setup access point and captive portal |
 | `src/alerts.cpp` | Discord webhook over verified HTTPS |
-| `src/display.cpp` | Drawing primitives, scaling and change tracking |
+| `src/display.cpp` | Drawing primitives, scaling, change tracking and screenshots |
 | `src/screens.cpp` | The four screens |
 | `src/buttons.cpp` | Buttons, touch and the wipe gesture |
 | `src/board.h` | Per-board options |
