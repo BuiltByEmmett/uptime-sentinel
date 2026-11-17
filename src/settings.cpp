@@ -99,6 +99,11 @@ void begin() {
   config.ssid = p.getString("ssid", "");
   config.pass = p.getString("pass", "");
   config.hook = p.getString("hook", "");
+  config.ntfyUrl = p.getString("ntfyurl", "");
+  config.ntfyToken = p.getString("ntfytok", "");
+  config.tgToken = p.getString("tgtok", "");
+  config.tgChat = p.getString("tgchat", "");
+  config.webhook = p.getString("whurl", "");
   config.tz = p.getString("tz", DEFAULT_TZ);
   config.target[0] = p.getString("target1", DEFAULT_TARGET1);
   config.target[1] = p.getString("target2", DEFAULT_TARGET2);
@@ -144,6 +149,34 @@ void saveHook(const String &hook) {
   p.end();
   config.hook = hook;
   config.hookAnnounced = false;
+}
+
+void saveNtfy(const String &url, const String &token) {
+  Preferences p;
+  p.begin(NS_CONFIG, false);
+  p.putString("ntfyurl", url);
+  p.putString("ntfytok", url.length() ? token : String(""));
+  p.end();
+  config.ntfyUrl = url;
+  config.ntfyToken = url.length() ? token : String("");
+}
+
+void saveTelegram(const String &token, const String &chat) {
+  Preferences p;
+  p.begin(NS_CONFIG, false);
+  p.putString("tgtok", token);
+  p.putString("tgchat", token.length() ? chat : String(""));
+  p.end();
+  config.tgToken = token;
+  config.tgChat = token.length() ? chat : String("");
+}
+
+void saveWebhook(const String &url) {
+  Preferences p;
+  p.begin(NS_CONFIG, false);
+  p.putString("whurl", url);
+  p.end();
+  config.webhook = url;
 }
 
 bool saveOptions(const String &tz, const String &target1, const String &target2) {
@@ -234,6 +267,60 @@ bool validLookupUrl(const String &text) {
     }
   }
   return true;
+}
+
+bool validAlertUrl(const String &text) {
+  if (text.length() == 0) return true;
+  if (!(text.startsWith("https://") || text.startsWith("http://")) || text.length() < 11 ||
+      text.length() > 240) {
+    return false;
+  }
+  for (size_t i = 0; i < text.length(); i++) {
+    char c = text[i];
+    if (c <= ' ' || c > '~' || c == '"' || c == '\'' || c == '<' || c == '>' || c == '\\') {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool validToken(const String &text) {
+  if (text.length() > 120) return false;
+  for (size_t i = 0; i < text.length(); i++) {
+    if (text[i] <= ' ' || text[i] > '~') return false;
+  }
+  return true;
+}
+
+// The token becomes part of a URL, so only the characters Telegram uses.
+bool validTelegramToken(const String &text) {
+  if (text.length() == 0) return true;
+  int colon = text.indexOf(':');
+  if (colon < 1 || text.length() > 80 || text.length() - colon < 10) return false;
+  for (size_t i = 0; i < text.length(); i++) {
+    char c = text[i];
+    if (static_cast<int>(i) < colon ? !isDigit(c)
+                                    : !(i == static_cast<size_t>(colon) || isAlphaNumeric(c) ||
+                                        c == '_' || c == '-')) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool validTelegramChat(const String &text) {
+  if (text.length() == 0) return true;
+  if (text.length() > 40) return false;
+  if (text[0] == '@') {
+    for (size_t i = 1; i < text.length(); i++) {
+      if (!isAlphaNumeric(text[i]) && text[i] != '_') return false;
+    }
+    return text.length() > 1;
+  }
+  for (size_t i = text[0] == '-' ? 1 : 0; i < text.length(); i++) {
+    if (!isDigit(text[i])) return false;
+  }
+  return isDigit(text[text.length() - 1]);
 }
 
 bool hasAdmin() { return adminSet; }

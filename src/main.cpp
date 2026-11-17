@@ -79,7 +79,7 @@ void onOutageEnd(Cause cause, uint32_t startMono, uint32_t endMono, bool recover
     pubip::afterOutage();
   }
   if (recovered) {
-    // One Discord message per ISP outage, sent when the internet is back.
+    // One alert per ISP outage, sent when the internet is back.
     if (ispDownCarry > 0) {
       alerts::outageEnded(ispDownCarry, timekeeper::valid() ? timekeeper::now() : 0);
     }
@@ -250,7 +250,7 @@ void setup() {
     if (net::wifiUp()) settings::setVerified();
   }
 
-  alerts::begin(conf.hook);
+  alerts::begin();
   if (conf.hook.length() && !conf.hookAnnounced) alerts::announceOnline();
 
   pubip::begin();

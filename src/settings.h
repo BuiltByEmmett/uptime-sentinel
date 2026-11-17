@@ -1,5 +1,5 @@
-// Everything the user configures, kept in NVS: WiFi credentials, the Discord
-// webhook URL, timezone, ping targets, the public IP lookup and the optional
+// Everything the user configures, kept in NVS: WiFi credentials, the alert
+// channels (Discord, ntfy, Telegram, generic webhook), timezone, ping targets, the public IP lookup and the optional
 // admin password.
 // Secrets are never compiled into the firmware, printed to serial or sent
 // back to a browser. The admin password is kept only as a salted hash.
@@ -11,7 +11,12 @@ namespace settings {
 struct Config {
   String ssid;
   String pass;
-  String hook;
+  String hook;                 // Discord webhook URL
+  String ntfyUrl;              // ntfy topic URL, e.g. https://ntfy.sh/my-topic
+  String ntfyToken;            // ntfy access token, optional
+  String tgToken;              // Telegram bot token
+  String tgChat;               // Telegram chat ID
+  String webhook;              // generic webhook URL, receives a JSON POST
   String tz;                   // POSIX TZ string
   String target[2];            // the two internet ping targets, dotted IPv4
   bool ipEnabled = true;       // look up and log the public IP address
@@ -40,6 +45,10 @@ bool hasWifi();
 
 void saveWifi(const String &ssid, const String &pass);
 void saveHook(const String &hook);  // empty removes it
+// The other alert channels. An empty URL (or bot token) removes the channel.
+void saveNtfy(const String &url, const String &token);
+void saveTelegram(const String &token, const String &chat);
+void saveWebhook(const String &url);
 bool saveOptions(const String &tz, const String &target1, const String &target2);
 bool saveIpLookup(bool enabled, const String &url1, const String &url2);
 void setVerified();
@@ -50,6 +59,10 @@ bool validIp(const String &text);
 bool validTz(const String &text);
 bool validHook(const String &text);
 bool validLookupUrl(const String &text);  // https://, no spaces; empty is not valid
+bool validAlertUrl(const String &text);   // http:// or https://, no spaces; empty is valid
+bool validToken(const String &text);      // printable, no spaces, 120 at most; empty is valid
+bool validTelegramToken(const String &text);  // digits, a colon, then letters, digits, _ or -
+bool validTelegramChat(const String &text);   // a number, or @channelname
 
 // Optional admin password for the dashboard's Settings and firmware update
 // pages. Only a random salt and a PBKDF2-HMAC-SHA256 hash are stored.

@@ -8,6 +8,7 @@
 #include <esp_system.h>
 #include <math.h>
 
+#include "alerts.h"
 #include "config.h"
 #include "daily.h"
 #include "display.h"
@@ -735,23 +736,67 @@ void handleUpdatePost() {
   restartAt = millis() + 1500;
 }
 
-void sendSettings(const String &notice) {
+// The end of one alert channel's section: whether something is saved, the
+// box to remove it and the test button. Never the saved value itself.
+String channelFooter(alerts::Channel channel, const char *clearName) {
+  String out;
+  if (!alerts::configured(channel)) {
+    out += F("<p>Not set up.</p>");
+    return out;
+  }
+  out += F("<p>Saved (not shown here).</p><label class=\"check\"><input type=\"checkbox\" "
+           "name=\"");
+  out += clearName;
+  out += F("\" value=\"1\"> Remove it</label><button type=\"submit\" class=\"sec\" "
+           "formaction=\"/alerts/test\" formnovalidate name=\"ch\" value=\"");
+  out += alerts::channelKey(channel);
+  out += F("\">Send test message to ");
+  out += alerts::channelName(channel);
+  out += F("</button>");
+  return out;
+}
+
+void sendSettings(const String &notice, bool testNotice = false) {
   const settings::Config &conf = settings::get();
   String page = html::pageStart("Uptime Sentinel settings");
   page += F("<p><a href=\"/\">&larr; Back to the dashboard</a></p>");
   if (notice.length()) page += "<p class=\"warn\">" + html::escape(notice) + "</p>";
-  page += F("<form method=\"post\" action=\"/settings\"><h2>DISCORD</h2>"
-            "<label for=\"hook\">Webhook URL</label>"
-            "<input id=\"hook\" name=\"hook\" type=\"url\" maxlength=\"240\" "
-            "placeholder=\"https://discord.com/api/webhooks/...\">");
-  if (conf.hook.length()) {
-    page += F("<p>A webhook is saved (it is not shown here). Leave the box empty to keep "
-              "it, or paste a new one to replace it.</p><label class=\"check\">"
-              "<input type=\"checkbox\" name=\"clearhook\" value=\"1\"> "
-              "Remove the saved webhook</label>");
-  } else {
-    page += F("<p>No webhook saved. Paste one to get a message when an ISP outage ends.</p>");
+  page += F("<form method=\"post\" action=\"/settings\">");
+  if (testNotice) {
+    page += F("<p id=\"tr\" class=\"warn\" aria-live=\"polite\">Sending the test message...</p>"
+              "<script>const tr=document.getElementById('tr');async function tp(){try{"
+              "const r=await fetch('/api/alerttest');tr.textContent=await r.text();"
+              "if(tr.textContent.indexOf('Sending')==0)setTimeout(tp,1500)}catch(e){"
+              "setTimeout(tp,3000)}}tp()</script>");
   }
+  page += F("<h2>ALERTS</h2><p>One message each time an ISP outage ends, sent to every channel "
+            "set up here. All four are optional. Saved addresses and tokens are never shown "
+            "again: leave a box empty to keep what is saved.</p>");
+
+  page += F("<h3>Discord</h3><label for=\"hook\">Webhook URL</label>"
+            "<input id=\"hook\" name=\"hook\" type=\"url\" maxlength=\"240\" "
+            "autocomplete=\"off\" placeholder=\"https://discord.com/api/webhooks/...\">");
+  page += channelFooter(alerts::DISCORD, "clearhook");
+
+  page += F("<h3>ntfy</h3><label for=\"ntfyurl\">Topic URL</label>"
+            "<input id=\"ntfyurl\" name=\"ntfyurl\" type=\"url\" maxlength=\"240\" "
+            "autocomplete=\"off\" placeholder=\"https://ntfy.sh/your-topic-name\">"
+            "<label for=\"ntfytok\">Access token, only if the topic needs one</label>"
+            "<input id=\"ntfytok\" name=\"ntfytok\" type=\"password\" maxlength=\"120\" "
+            "autocomplete=\"off\">");
+  page += channelFooter(alerts::NTFY, "clearntfy");
+
+  page += F("<h3>Telegram</h3><label for=\"tgtok\">Bot token (from @BotFather)</label>"
+            "<input id=\"tgtok\" name=\"tgtok\" type=\"password\" maxlength=\"80\" "
+            "autocomplete=\"off\"><label for=\"tgchat\">Chat ID</label>"
+            "<input id=\"tgchat\" name=\"tgchat\" type=\"text\" maxlength=\"40\" "
+            "autocomplete=\"off\">");
+  page += channelFooter(alerts::TELEGRAM, "cleartg");
+
+  page += F("<h3>Webhook (JSON POST)</h3><label for=\"whurl\">URL</label>"
+            "<input id=\"whurl\" name=\"whurl\" type=\"url\" maxlength=\"240\" "
+            "autocomplete=\"off\" placeholder=\"https://example.com/hook\">");
+  page += channelFooter(alerts::WEBHOOK, "clearwh");
   page += F("<h2>TIME AND TARGETS</h2>");
   page += html::optionFields();
   page += F("<h2>PUBLIC IP LOG</h2><label class=\"check\"><input type=\"checkbox\" "
@@ -798,7 +843,48 @@ void sendSettings(const String &notice) {
 
 void handleSettingsGet() {
   if (!allowed(false) || !requireAdmin("/settings")) return;
-  sendSettings("");
+  sendSettings("", server.arg("test") == "1");
+}
+
+// "Send test message" on the Settings page. The message goes out from the
+// alert task; the page then asks /api/alerttest how it went.
+void handleAlertTest() {
+  if (!allowed(true) || !requireAdmin("/settings")) return;
+  alerts::Channel channel;
+  if (!alerts::parseChannel(server.arg("ch"), channel) || !alerts::configured(channel)) {
+    sendSettings("Save that alert channel first, then send a test message.");
+    return;
+  }
+  if (!alerts::sendTest(channel)) {
+    sendSettings("The monitor is busy sending other alerts. Try again in a minute.");
+    return;
+  }
+  redirect("/settings?test=1");
+}
+
+void handleAlertTestStatus() {
+  if (!requestOk(false) || (settings::hasAdmin() && !sessionValid())) {
+    server.send(403, "text/plain", "Forbidden");
+    return;
+  }
+  alerts::TestResult r = alerts::lastTest();
+  String text;
+  if (r.state == alerts::TestState::NONE) {
+    text = "No test message has been sent.";
+  } else if (r.state == alerts::TestState::SENDING) {
+    text = String("Sending a test message to ") + alerts::channelName(r.channel) + "...";
+  } else if (r.state == alerts::TestState::DELIVERED) {
+    text = String("Test message delivered to ") + alerts::channelName(r.channel) + " (HTTP " +
+           String(r.code) + ").";
+  } else if (r.code > 0) {
+    text = String("Test message to ") + alerts::channelName(r.channel) + " was refused (HTTP " +
+           String(r.code) + "). Check the address or token.";
+  } else {
+    text = String("Test message to ") + alerts::channelName(r.channel) +
+           " failed: no answer from the server. Check the address.";
+  }
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "text/plain", text);
 }
 
 void handleSettingsPost() {
@@ -807,8 +893,31 @@ void handleSettingsPost() {
   hook.trim();
   String tz, target1, target2, admin, error;
   bool adminChange = false;
+  String ntfyUrl = server.arg("ntfyurl"), ntfyToken = server.arg("ntfytok");
+  String tgToken = server.arg("tgtok"), tgChat = server.arg("tgchat");
+  String webhook = server.arg("whurl");
+  ntfyUrl.trim();
+  ntfyToken.trim();
+  tgToken.trim();
+  tgChat.trim();
+  webhook.trim();
+  const settings::Config &saved = settings::get();
   if (!settings::validHook(hook)) {
-    error = "The webhook URL must start with https://";
+    error = "The Discord webhook URL must start with https://";
+  } else if (!settings::validAlertUrl(ntfyUrl)) {
+    error = "The ntfy topic URL must start with https:// or http:// and have no spaces.";
+  } else if (!settings::validToken(ntfyToken)) {
+    error = "The ntfy access token has characters that cannot be used.";
+  } else if (!settings::validTelegramToken(tgToken)) {
+    error = "That does not look like a Telegram bot token (numbers, a colon, then letters).";
+  } else if (!settings::validTelegramChat(tgChat)) {
+    error = "The Telegram chat ID must be a number, or @ and a channel name.";
+  } else if ((tgToken.length() || tgChat.length()) && server.arg("cleartg") != "1" &&
+             (tgToken.length() ? tgToken : saved.tgToken).length() *
+                     (tgChat.length() ? tgChat : saved.tgChat).length() == 0) {
+    error = "Telegram needs both a bot token and a chat ID.";
+  } else if (!settings::validAlertUrl(webhook)) {
+    error = "The webhook URL must start with https:// or http:// and have no spaces.";
   } else if (html::readOptions(server, tz, target1, target2, error)) {
     html::readAdmin(server, admin, adminChange, error);
   }
@@ -842,6 +951,21 @@ void handleSettingsPost() {
   settings::saveIpLookup(server.arg("ipon") == "1", ipUrl1, ipUrl2);
   if (server.arg("clearhook") == "1" && hook.length() == 0) settings::saveHook("");
   else if (hook.length()) settings::saveHook(hook);
+  // Each box that was filled in replaces what was saved; empty ones keep it.
+  if (server.arg("clearntfy") == "1" && ntfyUrl.length() == 0) {
+    settings::saveNtfy("", "");
+  } else if (ntfyUrl.length() || ntfyToken.length()) {
+    settings::saveNtfy(ntfyUrl.length() ? ntfyUrl : saved.ntfyUrl,
+                       ntfyToken.length() ? ntfyToken : saved.ntfyToken);
+  }
+  if (server.arg("cleartg") == "1" && tgToken.length() == 0) {
+    settings::saveTelegram("", "");
+  } else if (tgToken.length() || tgChat.length()) {
+    settings::saveTelegram(tgToken.length() ? tgToken : saved.tgToken,
+                           tgChat.length() ? tgChat : saved.tgChat);
+  }
+  if (server.arg("clearwh") == "1" && webhook.length() == 0) settings::saveWebhook("");
+  else if (webhook.length()) settings::saveWebhook(webhook);
   if (adminChange) settings::setAdminPassword(admin);
   Serial.printf("[web] settings saved, webhook %s, admin password %s; restarting\n",
                 settings::get().hook.length() ? "set" : "not set",
@@ -870,6 +994,8 @@ void begin() {
   server.on("/ip", HTTP_GET, handleIp);
   server.on("/settings", HTTP_GET, handleSettingsGet);
   server.on("/settings", HTTP_POST, handleSettingsPost);
+  server.on("/alerts/test", HTTP_POST, handleAlertTest);
+  server.on("/api/alerttest", HTTP_GET, handleAlertTestStatus);
   server.on("/login", HTTP_GET, handleLoginGet);
   server.on("/login", HTTP_POST, handleLoginPost);
   server.on("/logout", HTTP_GET, handleLogout);

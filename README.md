@@ -269,7 +269,19 @@ The `wt32-eth01` and `esp32-poe` builds have a wired network port.
   USB-serial adapter (hold IO0 to GND while it powers up), and flash it
   again to wipe its settings.
 
-## Step 6 (optional): Discord alerts
+## Step 6 (optional): Alerts
+
+The monitor can send a short message each time an ISP outage ends, for
+example `Internet was down 4m 12s (ISP side). Back at 14:03.` WiFi-only
+problems never send a message. There are four channels. Each is optional,
+they all get the same message, and you can use any mix of them.
+
+Discord can be set up on the setup page in Step 5. All four are in
+**Settings** on the web dashboard (below), each with a **Send test
+message** button that appears once the channel is saved. The test goes out
+straight away and the page tells you whether the service accepted it.
+
+### Discord
 
 A webhook lets the monitor post into one Discord channel. It is not a bot
 and cannot read anything.
@@ -278,17 +290,56 @@ and cannot read anything.
 2. Right-click the channel you want alerts in and choose **Edit Channel**.
 3. Go to **Integrations > Webhooks > New Webhook**.
 4. Click the new webhook, then **Copy Webhook URL**.
-5. Paste that URL into the setup page in Step 5.
+5. Paste that URL into the setup page or into Settings.
 
-When a webhook is saved for the first time the monitor posts
-`Uptime Sentinel online`, so you know it works. After that it posts once each
-time an ISP outage ends. WiFi-only problems never send a message.
+When a Discord webhook is saved for the first time the monitor posts
+`Uptime Sentinel online`.
 
-Treat the webhook URL like a password: anyone who has it can post to that
-channel. It is stored only on the device.
+### ntfy
 
-To add, change or remove the webhook later, use the Settings link on the web
-dashboard (below). No need to redo the WiFi setup.
+[ntfy](https://ntfy.sh) sends push notifications to your phone with no
+account needed.
+
+1. Install the ntfy app and subscribe to a topic with a long, hard-to-guess
+   name. Anyone who knows the name can read the topic.
+2. In Settings, enter the topic URL: `https://ntfy.sh/` followed by your
+   topic name. A self-hosted ntfy server works too, over `https://` or
+   `http://`.
+3. If your topic is protected, also enter an access token.
+
+### Telegram
+
+1. In Telegram, message **@BotFather**, send `/newbot` and follow the
+   steps. It gives you a bot token like `123456789:AAH...`.
+2. Send any message to your new bot, so that it is allowed to reply.
+3. Find your chat ID: message **@userinfobot**, or open
+   `https://api.telegram.org/bot<token>/getUpdates` and read `chat.id`.
+4. Enter the bot token and the chat ID in Settings.
+
+### Webhook (JSON POST)
+
+For Home Assistant, Node-RED, Slack-compatible relays or your own script.
+The monitor sends a POST with `Content-Type: application/json` to the URL
+you give (`https://` or `http://`):
+
+```json
+{"source":"uptime-sentinel","version":"1.4.0","event":"outage_ended",
+ "message":"Internet was down 4m 12s (ISP side). Back at 14:03.","time":1794904199}
+```
+
+`event` is `outage_ended` or `test`, and `time` is Unix time (0 if the clock
+is not set yet). Any 2xx answer counts as delivered.
+
+### Good to know
+
+- Treat webhook URLs, topic names and tokens like passwords. They are
+  stored only on the device, and once saved they are never shown again:
+  not on the Settings page, not in the serial log. To change one, type a
+  new value; to remove a channel, tick **Remove it**.
+- An alert that cannot be delivered is retried 6 times, 20 seconds apart,
+  for each channel separately.
+- `https://` addresses are checked against the built-in root certificates.
+  `http://` is meant for servers on your own network.
 
 ## The web dashboard
 
@@ -317,7 +368,8 @@ browser on any phone or computer on the same network.
   seconds. Handy as evidence when you complain to your ISP.
 - **Public IP log:** your current public address and its last 50 changes.
   See [Public IP log](#public-ip-log).
-- **Settings:** change the Discord webhook, timezone, ping targets, the
+- **Settings:** change the alert channels (Discord, ntfy, Telegram,
+  webhook), timezone, ping targets, the
   public IP lookup and the admin password. The monitor restarts to apply
   them.
 - **Update firmware:** install a new version from your browser, with no USB
@@ -728,7 +780,7 @@ real hardware.
 | `src/timekeeper.cpp` | NTP, timezone, time formatting |
 | `src/settings.cpp` | WiFi, webhook and other settings in NVS; admin password hash |
 | `src/portal.cpp` | Setup access point and captive portal |
-| `src/alerts.cpp` | Discord webhook over verified HTTPS |
+| `src/alerts.cpp` | Alerts to Discord, ntfy, Telegram and a generic webhook |
 | `src/pubip.cpp` | Public IP lookup over verified HTTPS, and its change log |
 | `src/display.cpp` | Drawing primitives, scaling, change tracking and screenshots |
 | `src/screens.cpp` | The four screens |

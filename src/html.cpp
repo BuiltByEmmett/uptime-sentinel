@@ -30,6 +30,9 @@ a{color:#9AA4AF}.warn{color:#FF8A3D}.big{font-size:44px;font-weight:bold;margin:
 .cell{background:#12171C;border:1px solid #1C232B;border-radius:6px;padding:10px;font-size:13px}
 .cell b{display:block;font-size:20px;margin-top:4px;color:#E8EDF2}
 canvas{width:100%;height:90px;margin-top:12px;display:block}
+button.sec{background:#1C232B;color:#E8EDF2;border:1px solid #2A333D;margin-top:12px;
+font-weight:normal;font-size:14px;padding:10px}
+h3{font-size:13px;color:#E8EDF2;margin:22px 0 0}
 .check{display:flex;align-items:center;gap:8px;margin-top:12px;color:#9AA4AF;font-size:13px}
 </style>)HTML";
 
