@@ -11,6 +11,7 @@
 #include "alerts.h"
 #include "config.h"
 #include "daily.h"
+#include "devices.h"
 #include "display.h"
 #include "html.h"
 #include "logview.h"
@@ -101,7 +102,7 @@ const char DASHBOARD[] PROGMEM = R"HTML(
 <h2>OUTAGE LOG</h2>
 <table><thead><tr><th>Started</th><th>Lasted</th><th>Cause</th></tr></thead>
 <tbody id="log"></tbody></table>
-<p><a href="/sites">Websites</a> &middot; <a href="/report">ISP report</a> &middot; <a href="/log.csv">Download log (CSV)</a> &middot; <a href="/ip">Public IP log</a>
+<p><a href="/devices">Devices</a> &middot; <a href="/sites">Websites</a> &middot; <a href="/report">ISP report</a> &middot; <a href="/log.csv">Download log (CSV)</a> &middot; <a href="/ip">Public IP log</a>
 &middot; <a href="/settings">Settings</a>
 &middot; <a href="/update">Update firmware</a></p>
 <p id="foot"></p>
@@ -217,7 +218,9 @@ bool sessionValid() {
 }
 
 // The pages a login may lead back to. Anything else falls back to Settings.
-const char *safeNext(const String &next) { return next == "/update" ? "/update" : "/settings"; }
+const char *safeNext(const String &next) {
+  return next == "/update" ? "/update" : next == "/devices" ? "/devices" : "/settings";
+}
 
 void redirect(const String &where) {
   server.sendHeader("Location", where, true);
@@ -433,6 +436,140 @@ void handleMetrics() {
 void handleReport() {
   if (!allowed(false)) return;
   report::send(server);
+}
+
+String macText(const uint8_t mac[6], bool colons) {
+  char text[18];
+  snprintf(text, sizeof(text), colons ? "%02X:%02X:%02X:%02X:%02X:%02X" : "%02x%02x%02x%02x%02x%02x",
+           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  return text;
+}
+
+// The device list. Everything on this page stays on the monitor.
+void handleDevices() {
+  if (!allowed(false)) return;
+  devices::Status st = devices::status();
+  server.sendHeader("Cache-Control", "no-store");
+  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  String page = html::pageStart("Uptime Sentinel devices");
+  page += F("<style>details{margin:6px 0 0}summary{color:#9AA4AF;font-size:13px;cursor:pointer}"
+            ".dv{border-bottom:1px solid #1C232B;padding:12px 0}.dv b{font-size:15px}"
+            ".dv p{margin:3px 0}.tag{border:1px solid #2A333D;border-radius:4px;padding:0 5px;"
+            "font-size:11px;margin-left:6px}</style>"
+            "<p><a href=\"/\">&larr; Back to the dashboard</a></p>");
+  if (server.arg("saved") == "1") page += F("<p class=\"warn\">Saved.</p>");
+  page += F("<h2>THIS MONITOR</h2><p>");
+  int dbm;
+  if (net::wifiSignal(dbm)) {
+    const char *words = dbm >= -55 ? "strong" : dbm >= -67 ? "good" : dbm >= -75 ? "fair" : "weak";
+    page += "WiFi signal at the monitor: <b>" + String(dbm) + " dBm</b> (" + words + ").";
+  } else {
+    page += F("The monitor is connected by cable, so it has no WiFi signal to show.");
+  }
+  page += F(" Signal strength is not shown for the devices below: only your router or access "
+            "point knows how well it hears each of them, and the monitor has no way to "
+            "measure it.</p><h2>DEVICES ON THIS NETWORK</h2>");
+  if (!st.enabled) {
+    page += F("<p>The device list is switched off. Turn it on in "
+              "<a href=\"/settings\">Settings</a>.</p>");
+    page += FPSTR(html::PAGE_END);
+    server.send(200, "text/html", page);
+    return;
+  }
+  if (!st.scanned) {
+    page += F("<p>The first scan has not finished yet. It starts about 40 seconds after the "
+              "monitor powers on and takes up to a minute and a half. Reload this page then.</p>");
+  } else {
+    char stamp[16] = "";
+    if (st.lastScan) timekeeper::formatStamp(st.lastScan, stamp, sizeof(stamp));
+    page += "<p>" + String(st.online) + " online, " + String(st.known) + " known. Last scan";
+    page += st.lastScan ? String(" ") + stamp : String(" finished");
+    page += st.scanning ? ", scanning again now." : ". The network is scanned every 5 minutes.";
+    page += F("</p>");
+    if (st.capped) {
+      page += F("<p>This network is larger than 254 addresses. Only the 254 addresses around "
+                "the monitor's own are scanned.</p>");
+    }
+    if (st.onlyGateway) {
+      page += F("<p class=\"warn\">The last scan found nothing but the router. This network "
+                "probably has client isolation switched on (common on guest networks and "
+                "public WiFi), which stops devices from seeing each other. The monitor cannot "
+                "list devices on such a network.</p>");
+    }
+  }
+  server.send(200, "text/html", page);
+
+  // Online first, then by address.
+  static uint8_t order[devices::MAX_DEVICES];
+  static devices::View v, other;
+  size_t n = devices::count();
+  if (n > devices::MAX_DEVICES) n = devices::MAX_DEVICES;
+  for (size_t i = 0; i < n; i++) order[i] = i;
+  for (size_t i = 1; i < n; i++) {
+    uint8_t key = order[i];
+    if (!devices::get(key, v)) continue;
+    size_t j = i;
+    while (j > 0 && devices::get(order[j - 1], other) &&
+           (other.online < v.online ||
+            (other.online == v.online && ntohl(other.ip) > ntohl(v.ip)))) {
+      order[j] = order[j - 1];
+      j--;
+    }
+    order[j] = key;
+  }
+  for (size_t i = 0; i < n; i++) {
+    if (!devices::get(order[i], v)) continue;
+    String title = v.nick[0] ? html::escape(v.nick)
+                   : v.host[0] ? html::escape(v.host)
+                               : String("Unnamed device");
+    page = "<div class=\"dv\"><b>" + title + "</b><span class=\"tag ";
+    page += v.online ? "g\">&#9650; ONLINE" : "m\">&#9661; OFFLINE";
+    page += "</span>";
+    if (v.gateway) page += "<span class=\"tag\">ROUTER</span>";
+    if (v.trusted) page += "<span class=\"tag\">&#10003; TRUSTED</span>";
+    page += "<p>" + IPAddress(v.ip).toString() + " &middot; " + macText(v.mac, true) + "</p><p>Maker: " +
+            html::escape(v.vendor);
+    if (v.host[0]) page += " &middot; Host name: " + html::escape(v.host);
+    page += "</p><p>Ping: ";
+    page += !v.online ? String("--") : v.pingMs >= 0 ? String(v.pingMs) + " ms" : String("no reply to pings");
+    char first[16], last[16];
+    timekeeper::formatStamp(v.firstSeen, first, sizeof(first));
+    timekeeper::formatStamp(v.lastSeen, last, sizeof(last));
+    page += " &middot; First seen ";
+    page += first;
+    page += " &middot; Last seen ";
+    page += last;
+    page += "</p><details><summary>Name or trust this device</summary><form method=\"post\" "
+            "action=\"/devices\"><input type=\"hidden\" name=\"mac\" value=\"" + macText(v.mac, false) +
+            "\"><label>Nickname<input type=\"text\" name=\"nick\" maxlength=\"20\" value=\"" +
+            html::escape(v.nick) + "\"></label><label class=\"check\"><input type=\"checkbox\" "
+            "name=\"trusted\" value=\"1\"";
+    if (v.trusted) page += " checked";
+    page += "> Trusted</label><button type=\"submit\" class=\"sec\">Save</button></form></details></div>";
+    server.sendContent(page);
+  }
+  page = F("<p>Devices are found by asking every address on the monitor's own network who is "
+           "there (ARP). A device that is asleep may show as offline. Makers come from a "
+           "built-in list of common brands; phones often use a private address that belongs "
+           "to no maker. Up to 64 devices are remembered. This list never leaves the monitor.</p>");
+  page += FPSTR(html::PAGE_END);
+  server.sendContent(page);
+  server.sendContent("");
+}
+
+void handleDevicePost() {
+  if (!allowed(true) || !requireAdmin("/devices")) return;
+  uint8_t mac[6];
+  String nick = server.arg("nick");
+  nick.trim();
+  if (!devices::parseMac(server.arg("mac"), mac) || !devices::validNick(nick) ||
+      !devices::update(mac, nick, server.arg("trusted") == "1")) {
+    server.send(400, "text/plain",
+                "That did not work. A nickname can be up to 20 letters, digits and simple "
+                "punctuation.");
+    return;
+  }
+  redirect("/devices?saved=1");
 }
 
 // The website checks: one summary row per site, then each site's own log.
@@ -935,6 +1072,13 @@ void sendSettings(const String &notice, bool testNotice = false) {
   page += F("<label class=\"check\"><input type=\"checkbox\" name=\"sitemet\" value=\"1\"");
   if (conf.siteMetrics) page += F(" checked");
   page += F("> Include these websites in /metrics (which needs no password)</label>");
+  page += F("<h2>DEVICES</h2><label class=\"check\"><input type=\"checkbox\" name=\"devscan\" "
+            "value=\"1\"");
+  if (conf.deviceScan) page += F(" checked");
+  page += F("> List the devices on this network (a slow scan every 5 minutes)</label>"
+            "<label class=\"check\"><input type=\"checkbox\" name=\"devalert\" value=\"1\"");
+  if (conf.deviceAlert) page += F(" checked");
+  page += F("> Send an alert when a device that has never been seen before joins</label>");
   page += F("<h2>TIME AND TARGETS</h2>");
   page += html::optionFields();
   page += F("<h2>PUBLIC IP LOG</h2><label class=\"check\"><input type=\"checkbox\" "
@@ -1118,6 +1262,7 @@ void handleSettingsPost() {
   settings::saveOptions(tz, target1, target2);
   settings::saveIpLookup(server.arg("ipon") == "1", ipUrl1, ipUrl2);
   settings::saveSites(newSites, server.arg("sitemet") == "1");
+  settings::saveDevices(server.arg("devscan") == "1", server.arg("devalert") == "1");
   if (server.arg("clearhook") == "1" && hook.length() == 0) settings::saveHook("");
   else if (hook.length()) settings::saveHook(hook);
   // Each box that was filled in replaces what was saved; empty ones keep it.
@@ -1160,6 +1305,8 @@ void begin() {
   server.on("/api/days", HTTP_GET, handleDays);
   server.on("/log.csv", HTTP_GET, handleCsv);
   server.on("/metrics", HTTP_GET, handleMetrics);
+  server.on("/devices", HTTP_GET, handleDevices);
+  server.on("/devices", HTTP_POST, handleDevicePost);
   server.on("/sites", HTTP_GET, handleSites);
   server.on("/report", HTTP_GET, handleReport);
   server.on("/ip", HTTP_GET, handleIp);

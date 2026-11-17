@@ -140,6 +140,22 @@ IPAddress localIP() {
   return WiFi.localIP();
 }
 
+IPAddress subnetMask() {
+#ifdef HAS_ETH
+  if (ethHasIp) return ETH.subnetMask();
+#endif
+  return WiFi.subnetMask();
+}
+
+bool wifiSignal(int &dbm) {
+#ifdef HAS_ETH
+  if (ethHasIp) return false;
+#endif
+  if (!wifiUp()) return false;
+  dbm = WiFi.RSSI();
+  return true;
+}
+
 IPAddress gatewayIP() {
 #ifdef HAS_ETH
   if (ethHasIp) return ETH.gatewayIP();

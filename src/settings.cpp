@@ -118,6 +118,8 @@ void begin() {
     config.site[i].url = p.getString(key, "");
   }
   config.siteMetrics = p.getBool("sitemet", false);
+  config.deviceScan = p.getBool("devscan", true);
+  config.deviceAlert = p.getBool("devalert", false);
   config.verified = p.getBool("verified", false);
   config.hookAnnounced = p.getBool("announced", false);
   adminSet = p.isKey("asalt") && p.isKey("ahash") &&
@@ -216,6 +218,16 @@ void saveSites(const Site sites[MAX_SITES], bool inMetrics) {
   p.putBool("sitemet", inMetrics);
   p.end();
   config.siteMetrics = inMetrics;
+}
+
+void saveDevices(bool scan, bool alertOnNew) {
+  Preferences p;
+  p.begin(NS_CONFIG, false);
+  p.putBool("devscan", scan);
+  p.putBool("devalert", alertOnNew);
+  p.end();
+  config.deviceScan = scan;
+  config.deviceAlert = alertOnNew;
 }
 
 bool saveIpLookup(bool enabled, const String &url1, const String &url2) {

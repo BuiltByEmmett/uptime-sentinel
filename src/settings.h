@@ -32,6 +32,8 @@ struct Config {
   String ipUrl[2];             // plain-text HTTPS lookup services; the second is the fallback
   Site site[MAX_SITES];        // websites to check
   bool siteMetrics = false;    // include the websites in /metrics
+  bool deviceScan = true;      // look for other devices on the local network
+  bool deviceAlert = false;    // send an alert when a device never seen before joins
   bool verified = false;       // these credentials have joined the network at least once
   bool hookAnnounced = false;  // the "Uptime Sentinel online" message has been delivered
 };
@@ -62,6 +64,7 @@ void saveTelegram(const String &token, const String &chat);
 void saveWebhook(const String &url);
 bool saveOptions(const String &tz, const String &target1, const String &target2);
 void saveSites(const Site sites[MAX_SITES], bool inMetrics);
+void saveDevices(bool scan, bool alertOnNew);
 bool saveIpLookup(bool enabled, const String &url1, const String &url2);
 void setVerified();
 void setHookAnnounced();

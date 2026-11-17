@@ -8,6 +8,7 @@
 #include "buttons.h"
 #include "config.h"
 #include "daily.h"
+#include "devices.h"
 #include "display.h"
 #include "monitor.h"
 #include "net.h"
@@ -174,6 +175,8 @@ void runCommand(const String &cmd) {
     pubip::simulateChange();
   } else if (cmd == "clearip") {
     pubip::clear();
+  } else if (cmd == "sim device") {
+    devices::simulateNew();
   } else if (cmd == "sim cert") {
     sites::simulateCert();
   } else if (cmd == "sim days") {
@@ -181,7 +184,7 @@ void runCommand(const String &cmd) {
   } else if (cmd == "cleardays") {
     daily::clear();
   } else {
-    Serial.println("[cmd] commands: sim isp | sim isplocal | sim wifi | sim slow | sim dns | sim newip | sim days | sim cert | sim off | log | stats | clearlog | clearip | cleardays");
+    Serial.println("[cmd] commands: sim isp | sim isplocal | sim wifi | sim slow | sim dns | sim newip | sim days | sim cert | sim device | sim off | log | stats | clearlog | clearip | cleardays");
     return;
   }
   Serial.printf("[cmd] ok: %s\n", cmd.c_str());
@@ -258,6 +261,7 @@ void setup() {
 
   pubip::begin();
   sites::begin();
+  devices::begin();
 
   monitor::Handlers handlers = {onOutageStart, onOutageEnd};
   monitor::begin(handlers);

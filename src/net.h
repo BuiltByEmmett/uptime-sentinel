@@ -32,8 +32,11 @@ void loop();   // switches between the two links and retries WiFi
 bool up();     // some link has an address
 bool wired();  // the link in use, or the last one used, is the wired port
 IPAddress localIP();
+IPAddress subnetMask();
 IPAddress gatewayIP();
 IPAddress dnsIP();
+// The board's own WiFi signal in dBm. False when the link in use is a cable.
+bool wifiSignal(int &dbm);
 String linkText();  // for the dashboard footer, e.g. "WiFi -52 dBm"
 
 // A TLS session needs tens of kilobytes of memory while it lasts. Tasks that

@@ -328,7 +328,8 @@ you give (`https://` or `http://`):
 ```
 
 `event` is `outage_ended`, `test`, or for [website checks](#website-checks)
-`site_down`, `site_up` or `cert_expiring`, and `time` is Unix time (0 if the clock
+`site_down`, `site_up` or `cert_expiring`, or `new_device` for the
+[device list](#device-list), and `time` is Unix time (0 if the clock
 is not set yet). Any 2xx answer counts as delivered.
 
 ### Good to know
@@ -364,6 +365,7 @@ browser on any phone or computer on the same network.
   of the 200-entry log does not empty the calendar.
 - **Outage log:** all 200 entries, with anything still in progress at the
   top.
+- **Devices:** what else is on your network. See [Device list](#device-list).
 - **Websites:** the state of up to five websites you choose. See
   [Website checks](#website-checks).
 - **ISP report:** a plain page for one month, made to be printed or saved
@@ -373,7 +375,7 @@ browser on any phone or computer on the same network.
 - **Public IP log:** your current public address and its last 50 changes.
   See [Public IP log](#public-ip-log).
 - **Settings:** change the alert channels (Discord, ntfy, Telegram,
-  webhook), the websites to check, timezone, ping targets, the
+  webhook), the websites to check, the device list, timezone, ping targets, the
   public IP lookup and the admin password. The monitor restarts to apply
   them.
 - **Update firmware:** install a new version from your browser, with no USB
@@ -474,6 +476,52 @@ Good to know: uptime is counted from a site's first check, and a site
 whose address you change starts again from nothing. Time during which
 checks were paused counts as up. Website checks need the clock, so they
 start once the monitor has reached the internet.
+
+## Device list
+
+The **Devices** page on the dashboard lists what is on your local network.
+Every five minutes the monitor asks each address on its own network "who
+is there?" (an ARP request) and notes who answers. For each device it
+shows:
+
+- IP address and MAC address
+- maker, from a built-in list of about 100 common brands, or **Unknown**.
+  Phones and laptops often use a made-up private address for each network;
+  those belong to no maker and are shown as *Unknown (private address)*
+- host name, when the router or the device itself gives one
+- ONLINE or OFFLINE, and a ping time (many phones do not answer pings)
+- when it was first and last seen
+
+Open **Name or trust this device** under an entry to give it a nickname
+and tick **Trusted**. Both are only labels for you, to tell your own
+devices from strangers at a glance. If an admin password is set, changing
+them needs a login.
+
+Things to know:
+
+- **Signal strength.** The page shows the monitor's own WiFi signal. It
+  does not show a signal for any other device, and cannot: how well each
+  device is heard is known only to your router or access point.
+- **New-device alert.** Off by default. Tick **Send an alert when a device
+  that has never been seen before joins** in Settings and the monitor sends
+  one message through your alert channels the first time an unknown MAC
+  address appears. The message names the maker and host name only. Devices
+  found by the very first scan are not announced.
+- **Client isolation.** On guest networks and public WiFi, devices are
+  often not allowed to see each other. If a scan finds nothing but the
+  router, the page says so instead of showing an empty list.
+- **Size.** At most 254 addresses are scanned: the monitor's own network if
+  it is that size or smaller, otherwise the 254 addresses around its own.
+  Up to 64 devices are remembered; when full, the one not seen for longest
+  makes room, unless you named or trusted it.
+- **Pace.** A scan sends three requests at a time and takes about half a
+  minute. It runs beside the 2-second ping rounds, not in them.
+- **Privacy.** The list stays on the monitor. Nothing about it goes into
+  `/metrics`, the ISP report, the CSV or screenshots of the display. Host
+  names are looked up by asking your network's own DNS server (usually the
+  router) and then the device itself.
+- Switch the whole thing off with **List the devices on this network** in
+  Settings.
 
 ## ISP report
 
@@ -834,6 +882,7 @@ Type a command and press Enter:
 | `clearlog` | Erase the outage log |
 | `clearip` | Erase the public IP log |
 | `sim cert` | Pretend the first website's certificate expires in ten days, to test the expiry warning |
+| `sim device` | Forget one online device and scan again, so it is found as new (tests the new-device alert) |
 | `sim days` | Add made-up downtime to nine days of the calendar, to see the shading |
 | `cleardays` | Erase the calendar and rebuild it from the outage log |
 
@@ -889,6 +938,8 @@ real hardware.
 | `src/sites.cpp` | Website checks: rotation, DOWN logic, certificate warnings, per-site log |
 | `src/fetch.cpp` | One HTTP or HTTPS request with our own certificate check against the CA bundle |
 | `src/ca_bundle.cpp` | Mozilla's root certificates in compact form (generated by `tools/make_ca.py`) |
+| `src/devices.cpp` | Device list: ARP scan, makers, host names, nicknames |
+| `src/oui_table.cpp` | MAC prefixes of common makers (generated by `tools/make_oui.py` from the IEEE registry) |
 | `src/alerts.cpp` | Alerts to Discord, ntfy, Telegram and a generic webhook |
 | `src/pubip.cpp` | Public IP lookup over verified HTTPS, and its change log |
 | `src/display.cpp` | Drawing primitives, scaling, change tracking and screenshots |
