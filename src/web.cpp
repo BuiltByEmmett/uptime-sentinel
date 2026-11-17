@@ -330,6 +330,28 @@ void handleCsv() {
   server.sendContent("");
 }
 
+// The display as a picture. No password: it shows nothing the dashboard
+// does not. Builds without a display have no such page.
+#ifndef HEADLESS
+void handleScreenshot() {
+  if (!allowed(false)) return;
+  if (!screens::capture(server.arg("screen").c_str())) {
+    display::freeCapture();
+    if (server.hasArg("screen") && server.arg("screen").length()) {
+      server.send(400, "text/plain", "screen must be status, latency, outages or uptime");
+    } else {
+      server.send(503, "text/plain", "Not enough memory for a screenshot right now");
+    }
+    return;
+  }
+  size_t length;
+  const uint8_t *file = display::captureFile(length);
+  server.sendHeader("Cache-Control", "no-store");
+  server.send_P(200, "image/bmp", reinterpret_cast<const char *>(file), length);
+  display::freeCapture();
+}
+#endif
+
 void sendLogin(const String &next, const String &notice) {
   String page = html::pageStart("Uptime Sentinel login");
   page += F("<p><a href=\"/\">&larr; Back to the dashboard</a></p>");
@@ -661,6 +683,9 @@ void begin() {
   server.on("/login", HTTP_GET, handleLoginGet);
   server.on("/login", HTTP_POST, handleLoginPost);
   server.on("/logout", HTTP_GET, handleLogout);
+#ifndef HEADLESS
+  server.on("/screenshot.bmp", HTTP_GET, handleScreenshot);
+#endif
   server.on("/update", HTTP_GET, handleUpdateGet);
   server.on("/update", HTTP_POST, handleUpdatePost, handleUpdateData);
   server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });

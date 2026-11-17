@@ -44,12 +44,13 @@ constexpr int16_t py(int y) { return ORIGIN_Y + scaled(y); }
 
 enum Align : uint8_t { LEFT, CENTER, RIGHT };
 
-TFT_eSPI &tft();
-
 // Shapes, in grid units. Lines are always one real pixel thick.
 void fill(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
 void hline(int16_t x, int16_t y, int16_t w, uint16_t color);
 void vline(int16_t x, int16_t y, int16_t h, uint16_t color);
+
+// A filled rectangle in real pixels, for things laid out to the pixel.
+void fillPx(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
 
 // Off-screen canvas in real pixels, pre-filled with the background colour.
 // endField() takes the real-pixel position to push it to.
@@ -65,6 +66,7 @@ class Label {
         int8_t padBottom = -1);
   void set(const char *text, uint16_t color);
   void invalidate() { drawn_ = false; }
+  void redraw();  // draw the same text again, whether or not it changed
 
  private:
   int16_t x_, top_, w_;  // real pixels
@@ -82,6 +84,19 @@ class Label {
 void drawHeader(int8_t page, int8_t pageCount);
 void clearBody();
 void clearAll();
+
+// Screenshots. Between beginCapture() and stopCapture() every drawing call
+// lands in an off-screen picture instead of on the panel. The picture is a
+// complete 16-colour BMP file, valid until freeCapture(). Nothing is read
+// back from the panel: the screen is drawn a second time by the same code.
+bool beginCapture();  // false when there is not enough memory
+void stopCapture();
+const uint8_t *captureFile(size_t &length);
+void freeCapture();
+
+// Draws the notice from message() again (into a capture, or onto the panel
+// after one).
+void redrawMessage();
 
 }  // namespace display
 #endif  // HEADLESS

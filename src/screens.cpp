@@ -9,6 +9,7 @@ void show() {}
 void next() {}
 void action() {}
 void update() {}
+bool capture(const char *) { return false; }
 }  // namespace screens
 
 #else
@@ -170,7 +171,7 @@ Label grValue[4] = {Label(1, STRIP_VALUE_Y, 58, &Font10, CAP10, CENTER),
 
 void enterLatency() {
   drawStripFrame(4);
-  display::tft().drawFastHLine(GRAPH_X, GRAPH_TOP + GRAPH_H, GRAPH_W, color::DIVIDER);
+  display::fillPx(GRAPH_X, GRAPH_TOP + GRAPH_H, GRAPH_W, 1, color::DIVIDER);
   barsDrawn = false;
   for (int i = 0; i < 4; i++) {
     grName[i].invalidate();
@@ -221,7 +222,6 @@ void updateLatency() {
   int16_t scale = ((peak + 19) / 20) * 20;
   if (scale < 20) scale = 20;
 
-  TFT_eSPI &tft = display::tft();
   for (int j = 0; j < BARS; j++) {
     int16_t h = 0;
     if (kind[j] == BAR_FAIL) h = GRAPH_H;
@@ -233,10 +233,10 @@ void updateLatency() {
     if (barsDrawn && h == barHeight[j] && kind[j] == barKind[j]) continue;
     int16_t x = GRAPH_X + j * BAR_PITCH;
     // Two fills, empty part then bar, so the column never blinks to blank.
-    if (h < GRAPH_H) tft.fillRect(x, GRAPH_TOP, BAR_W, GRAPH_H - h, color::BG);
+    if (h < GRAPH_H) display::fillPx(x, GRAPH_TOP, BAR_W, GRAPH_H - h, color::BG);
     if (h > 0) {
-      tft.fillRect(x, GRAPH_TOP + GRAPH_H - h, BAR_W, h,
-                   kind[j] == BAR_FAIL ? color::ORANGE : color::GREEN);
+      display::fillPx(x, GRAPH_TOP + GRAPH_H - h, BAR_W, h,
+                      kind[j] == BAR_FAIL ? color::ORANGE : color::GREEN);
     }
     barHeight[j] = h;
     barKind[j] = kind[j];
@@ -418,10 +418,18 @@ void updateUptime() {
   upRowValue[2].set(text, color::TEXT);
 }
 
-}  // namespace
+void updateCurrent() {
+  switch (current) {
+    case STATUS: updateStatus(); break;
+    case LATENCY: updateLatency(); break;
+    case OUTAGES: updateOutages(); break;
+    default: updateUptime(); break;
+  }
+}
 
-void show() {
-  display::clearAll();
+// Draws every part of the current screen onto a background that is already
+// clear.
+void paint() {
   display::drawHeader(current, SCREEN_COUNT);
   title.invalidate();
   switch (current) {
@@ -430,7 +438,45 @@ void show() {
     case OUTAGES: enterOutages(); break;
     default: enterUptime(); break;
   }
-  update();
+  updateCurrent();
+}
+
+}  // namespace
+
+void show() {
+  display::clearAll();
+  paint();
+}
+
+bool capture(const char *name) {
+  static const char *const NAMES[SCREEN_COUNT] = {"status", "latency", "outages", "uptime"};
+  bool asShown = name[0] == '\0';
+  int8_t wanted = current;
+  if (!asShown) {
+    wanted = -1;
+    for (int8_t i = 0; i < SCREEN_COUNT; i++) {
+      if (strcmp(name, NAMES[i]) == 0) wanted = i;
+    }
+    if (wanted < 0) return false;
+  }
+  if (!display::beginCapture()) return false;
+
+  bool notice = display::messageShowing();
+  int8_t shown = current;
+  if (asShown && notice) {
+    display::redrawMessage();
+  } else {
+    current = wanted;
+    paint();
+  }
+  display::stopCapture();
+
+  // Drawing into the picture marked those labels as up to date, so put the
+  // same content on the panel again. Nothing visible changes.
+  current = shown;
+  if (notice) display::redrawMessage();
+  else paint();
+  return true;
 }
 
 void next() {
@@ -449,12 +495,7 @@ void action() {
 
 void update() {
   if (display::messageShowing()) return;
-  switch (current) {
-    case STATUS: updateStatus(); break;
-    case LATENCY: updateLatency(); break;
-    case OUTAGES: updateOutages(); break;
-    default: updateUptime(); break;
-  }
+  updateCurrent();
 }
 
 }  // namespace screens

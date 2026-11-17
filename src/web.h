@@ -3,6 +3,7 @@
 // Reachable only from the same network; it never sends saved secrets back.
 // When an admin password is set, Settings needs a login first. Firmware can
 // be updated from the dashboard, but only once an admin password exists.
+// /screenshot.bmp returns the display as a picture (not on headless builds).
 #pragma once
 #include <Arduino.h>
 
