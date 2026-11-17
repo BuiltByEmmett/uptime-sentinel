@@ -14,6 +14,7 @@
 #include "display.h"
 #include "html.h"
 #include "logview.h"
+#include "metrics.h"
 #include "monitor.h"
 #include "net.h"
 #include "pubip.h"
@@ -161,6 +162,8 @@ status();log();cal();setInterval(status,2000);setInterval(log,10000);setInterval
 bool requestOk(bool isPost) {
   String host = server.hostHeader();
   host.toLowerCase();
+  // Scrapers such as Prometheus name the port even when it is the usual one.
+  if (host.endsWith(":80")) host.remove(host.length() - 3);
   String mdns = String(cfg::MDNS_NAME) + ".local";
   bool hostOk = host == net::localIP().toString() || host == mdns;
   bool originOk = true;
@@ -418,6 +421,12 @@ void handleCsv() {
   }
   if (chunk.length()) server.sendContent(chunk);
   server.sendContent("");
+}
+
+void handleMetrics() {
+  if (!allowed(false)) return;
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "text/plain; version=0.0.4; charset=utf-8", metrics::render());
 }
 
 void handleReport() {
@@ -990,6 +999,7 @@ void begin() {
   server.on("/api/log", HTTP_GET, handleLog);
   server.on("/api/days", HTTP_GET, handleDays);
   server.on("/log.csv", HTTP_GET, handleCsv);
+  server.on("/metrics", HTTP_GET, handleMetrics);
   server.on("/report", HTTP_GET, handleReport);
   server.on("/ip", HTTP_GET, handleIp);
   server.on("/settings", HTTP_GET, handleSettingsGet);

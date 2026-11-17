@@ -440,6 +440,51 @@ The report is built from the outage log, which keeps the latest 200
 entries. If older entries of the chosen month have already been replaced,
 the page says so.
 
+## Metrics for Prometheus
+
+**<http://uptime.local/metrics>** gives the monitor's figures in the
+Prometheus text format, so you can graph them in Grafana or alert on them.
+It needs no password.
+
+| Metric | Meaning |
+|---|---|
+| `uptime_sentinel_info{version,board}` | Firmware version and build name; always 1 |
+| `uptime_sentinel_device_uptime_seconds` | Seconds since the monitor started |
+| `uptime_sentinel_free_heap_bytes` | Free memory on the monitor |
+| `uptime_sentinel_state{state}` | `online`, `offline`, `slow`, `no_dns` or `starting`; the current one is 1 |
+| `uptime_sentinel_internet_up` | 1 when the internet is reachable |
+| `uptime_sentinel_target_up{target}` | 1 when that target answered the latest ping |
+| `uptime_sentinel_latency_seconds{target}` | Its reply time; left out when there was no reply |
+| `uptime_sentinel_packet_loss_ratio` | Internet pings lost over the last 5 minutes, 0 to 1 |
+| `uptime_sentinel_jitter_seconds` | Jitter over the last 5 minutes |
+| `uptime_sentinel_dns_up` | 1 when the latest DNS lookup worked |
+| `uptime_sentinel_uptime_ratio{window}` | Uptime over `24h` and `7d`, 0 to 1, ISP outages only |
+| `uptime_sentinel_logged_events{cause}` | Entries in the outage log by cause: `isp`, `isp_local`, `isp_upstream`, `wifi`, `lan`, `slow`, `dns`, `power` |
+
+`target` is `router`, each of your two internet ping targets by address, and
+`isp_hop` when the first ISP hop is in use. `logged_events` counts what is in
+the 200-entry log, so it can go down when old entries drop out: graph it,
+but do not use `increase()` on it.
+
+The page never contains your public IP address, the router's or the ISP
+hop's address, your WiFi name, or anything about other devices on your
+network. Like the rest of the dashboard it only answers requests addressed
+to `uptime.local` or to the monitor's own IP address.
+
+A sample scrape job for `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: uptime-sentinel
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['uptime.local:80']   # or the monitor's IP address and :80
+```
+
+If the machine running Prometheus cannot resolve `.local` names (common
+inside Docker), use the monitor's IP address and give it a fixed address in
+your router.
+
 ## Public IP log
 
 Most home connections get a new public IP address now and then, often right
@@ -773,6 +818,7 @@ real hardware.
 | `src/storage.cpp` | Outage log and power heartbeat on LittleFS |
 | `src/daily.cpp` | Uptime calendar: ISP downtime per day for 90 days, on LittleFS |
 | `src/logview.cpp` | The log as displayed, with the ongoing event on top |
+| `src/metrics.cpp` | The Prometheus `/metrics` page |
 | `src/report.cpp` | The printable monthly ISP report |
 | `src/web.cpp` | Web dashboard, JSON API, CSV export, public IP page, settings page, admin login, firmware update, screenshots |
 | `src/html.cpp` | Page styling and form fields shared with the setup portal |
