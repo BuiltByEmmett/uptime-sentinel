@@ -6,6 +6,7 @@
 #include "monitor.h"
 #include "ping.h"
 #include "settings.h"
+#include "sites.h"
 #include "stats.h"
 #include "storage.h"
 #include "timekeeper.h"
@@ -112,6 +113,43 @@ String render() {
     sample(out, "logged_events",
            "cause=\"" + labelValue(monitor::causeName(static_cast<Cause>(c))) + "\"",
            String(counts[c]));
+  }
+
+  // The website list is private unless the user asks for it here.
+  if (conf.siteMetrics && sites::any()) {
+    static sites::View view[settings::MAX_SITES];
+    for (size_t i = 0; i < settings::MAX_SITES; i++) sites::snapshot(i, view[i]);
+    auto each = [&](const char *name, const char *type, const char *help,
+                    bool (*value)(const sites::View &, String &)) {
+      head(out, name, type, help);
+      for (size_t i = 0; i < settings::MAX_SITES; i++) {
+        String text;
+        if (view[i].used && value(view[i], text)) {
+          sample(out, name, "site=\"" + conf.site[i].name + "\"", text);
+        }
+      }
+    };
+    each("site_up", "gauge", "1 when the website is up, 0 when it is down.",
+         [](const sites::View &v, String &text) {
+           text = v.state == sites::State::DOWN ? "0" : "1";
+           return v.state != sites::State::WAITING;
+         });
+    each("site_response_seconds", "gauge", "Time to the first line of the latest reply.",
+         [](const sites::View &v, String &text) {
+           text = seconds(v.ms);
+           return v.ms >= 0 && v.code != 0;
+         });
+    each("site_http_status", "gauge", "HTTP status of the latest check.",
+         [](const sites::View &v, String &text) {
+           text = String(v.code);
+           return v.code != 0;
+         });
+    each("site_cert_expiry_days", "gauge", "Days until the HTTPS certificate expires.",
+         [](const sites::View &v, String &text) {
+           int32_t left = static_cast<int32_t>(v.certExpiry - timekeeper::now());
+           text = String(left / 86400.0f, 1);
+           return v.certExpiry != 0 && timekeeper::valid();
+         });
   }
   return out;
 }

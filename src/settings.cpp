@@ -110,6 +110,14 @@ void begin() {
   config.ipEnabled = p.getBool("ipon", true);
   config.ipUrl[0] = p.getString("ipurl1", DEFAULT_IP_URL1);
   config.ipUrl[1] = p.getString("ipurl2", DEFAULT_IP_URL2);
+  for (size_t i = 0; i < MAX_SITES; i++) {
+    char key[8];
+    snprintf(key, sizeof(key), "s%un", static_cast<unsigned>(i));
+    config.site[i].name = p.getString(key, "");
+    snprintf(key, sizeof(key), "s%uu", static_cast<unsigned>(i));
+    config.site[i].url = p.getString(key, "");
+  }
+  config.siteMetrics = p.getBool("sitemet", false);
   config.verified = p.getBool("verified", false);
   config.hookAnnounced = p.getBool("announced", false);
   adminSet = p.isKey("asalt") && p.isKey("ahash") &&
@@ -192,6 +200,22 @@ bool saveOptions(const String &tz, const String &target1, const String &target2)
   config.target[1] = target2;
   refreshTargets();
   return true;
+}
+
+void saveSites(const Site sites[MAX_SITES], bool inMetrics) {
+  Preferences p;
+  p.begin(NS_CONFIG, false);
+  for (size_t i = 0; i < MAX_SITES; i++) {
+    char key[8];
+    snprintf(key, sizeof(key), "s%un", static_cast<unsigned>(i));
+    if (sites[i].name != config.site[i].name) p.putString(key, sites[i].name);
+    snprintf(key, sizeof(key), "s%uu", static_cast<unsigned>(i));
+    if (sites[i].url != config.site[i].url) p.putString(key, sites[i].url);
+    config.site[i] = sites[i];
+  }
+  p.putBool("sitemet", inMetrics);
+  p.end();
+  config.siteMetrics = inMetrics;
 }
 
 bool saveIpLookup(bool enabled, const String &url1, const String &url2) {
@@ -278,6 +302,25 @@ bool validAlertUrl(const String &text) {
   for (size_t i = 0; i < text.length(); i++) {
     char c = text[i];
     if (c <= ' ' || c > '~' || c == '"' || c == '\'' || c == '<' || c == '>' || c == '\\') {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool validSiteUrl(const String &text) {
+  if (text.length() == 0 || text.length() > SITE_URL_MAX_LEN || !validAlertUrl(text)) return false;
+  int start = text.startsWith("https://") ? 8 : 7;
+  char first = text[start];
+  return isAlphaNumeric(first) || first == '[';
+}
+
+bool validSiteName(const String &text) {
+  if (text.length() == 0 || text.length() > SITE_NAME_MAX_LEN) return false;
+  for (size_t i = 0; i < text.length(); i++) {
+    char c = text[i];
+    if (c < ' ' || c > '~' || c == '"' || c == '\'' || c == '<' || c == '>' || c == '&' ||
+        c == '\\') {
       return false;
     }
   }

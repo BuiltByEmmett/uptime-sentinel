@@ -16,6 +16,7 @@
 #include "pubip.h"
 #include "screens.h"
 #include "settings.h"
+#include "sites.h"
 #include "stats.h"
 #include "storage.h"
 #include "timekeeper.h"
@@ -173,12 +174,14 @@ void runCommand(const String &cmd) {
     pubip::simulateChange();
   } else if (cmd == "clearip") {
     pubip::clear();
+  } else if (cmd == "sim cert") {
+    sites::simulateCert();
   } else if (cmd == "sim days") {
     daily::simulate();
   } else if (cmd == "cleardays") {
     daily::clear();
   } else {
-    Serial.println("[cmd] commands: sim isp | sim isplocal | sim wifi | sim slow | sim dns | sim newip | sim days | sim off | log | stats | clearlog | clearip | cleardays");
+    Serial.println("[cmd] commands: sim isp | sim isplocal | sim wifi | sim slow | sim dns | sim newip | sim days | sim cert | sim off | log | stats | clearlog | clearip | cleardays");
     return;
   }
   Serial.printf("[cmd] ok: %s\n", cmd.c_str());
@@ -254,6 +257,7 @@ void setup() {
   if (conf.hook.length() && !conf.hookAnnounced) alerts::announceOnline();
 
   pubip::begin();
+  sites::begin();
 
   monitor::Handlers handlers = {onOutageStart, onOutageEnd};
   monitor::begin(handlers);

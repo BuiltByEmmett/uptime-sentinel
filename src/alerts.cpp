@@ -5,6 +5,7 @@
 #include <WiFiClientSecure.h>
 
 #include "config.h"
+#include "fetch.h"
 #include "net.h"
 #include "settings.h"
 #include "timekeeper.h"
@@ -37,7 +38,7 @@ String jsonEscape(const char *text) {
   return out;
 }
 
-// One POST. http:// goes out as it is; https:// is verified against `cas`.
+// One POST to a fixed service: https:// verified against the short list `cas`.
 int post(const String &url, const char *cas, const char *contentType, const String &body,
          const char *headerName = nullptr, const String &headerValue = "",
          const char *header2Name = nullptr, const String &header2Value = "") {
@@ -63,19 +64,24 @@ int post(const String &url, const char *cas, const char *contentType, const Stri
   return send(client);
 }
 
+// One POST to an address the user typed in: https:// verified against the
+// whole CA bundle, http:// sent as it is. `headers` are complete lines.
+int postAnywhere(const String &url, const String &headers, const String &body) {
+  fetch::Reply reply = fetch::request(url, "POST", headers, body.c_str(), 8000);
+  return reply.error == fetch::Error::NONE ? reply.code : -1;
+}
+
 int deliver(Channel channel, const Message &msg) {
   const settings::Config &conf = settings::get();
   switch (channel) {
     case DISCORD:
       return post(conf.hook, DISCORD_ROOT_CAS, "application/json",
                   "{\"content\":\"" + jsonEscape(msg.text) + "\"}");
-    case NTFY:
-      if (conf.ntfyToken.length()) {
-        return post(conf.ntfyUrl, LOOKUP_ROOT_CAS, "text/plain; charset=utf-8", msg.text, "Title",
-                    "Uptime Sentinel", "Authorization", "Bearer " + conf.ntfyToken);
-      }
-      return post(conf.ntfyUrl, LOOKUP_ROOT_CAS, "text/plain; charset=utf-8", msg.text, "Title",
-                  "Uptime Sentinel");
+    case NTFY: {
+      String headers = "Content-Type: text/plain; charset=utf-8\r\nTitle: Uptime Sentinel\r\n";
+      if (conf.ntfyToken.length()) headers += "Authorization: Bearer " + conf.ntfyToken + "\r\n";
+      return postAnywhere(conf.ntfyUrl, headers, msg.text);
+    }
     case TELEGRAM:
       return post(String(TELEGRAM_API) + conf.tgToken + "/sendMessage", LOOKUP_ROOT_CAS,
                   "application/json",
@@ -88,7 +94,7 @@ int deliver(Channel channel, const Message &msg) {
               jsonEscape(msg.text) + "\",\"time\":";
       body += timekeeper::valid() ? timekeeper::now() : 0;
       body += "}";
-      return post(conf.webhook, LOOKUP_ROOT_CAS, "application/json", body);
+      return postAnywhere(conf.webhook, "Content-Type: application/json\r\n", body);
     }
     default:
       return -1;

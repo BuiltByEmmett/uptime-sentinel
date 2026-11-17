@@ -8,6 +8,15 @@
 
 namespace settings {
 
+constexpr size_t MAX_SITES = 5;
+constexpr size_t SITE_NAME_MAX_LEN = 24;
+constexpr size_t SITE_URL_MAX_LEN = 120;
+
+struct Site {
+  String name;
+  String url;  // http:// or https://; empty = slot not used
+};
+
 struct Config {
   String ssid;
   String pass;
@@ -21,6 +30,8 @@ struct Config {
   String target[2];            // the two internet ping targets, dotted IPv4
   bool ipEnabled = true;       // look up and log the public IP address
   String ipUrl[2];             // plain-text HTTPS lookup services; the second is the fallback
+  Site site[MAX_SITES];        // websites to check
+  bool siteMetrics = false;    // include the websites in /metrics
   bool verified = false;       // these credentials have joined the network at least once
   bool hookAnnounced = false;  // the "Uptime Sentinel online" message has been delivered
 };
@@ -50,6 +61,7 @@ void saveNtfy(const String &url, const String &token);
 void saveTelegram(const String &token, const String &chat);
 void saveWebhook(const String &url);
 bool saveOptions(const String &tz, const String &target1, const String &target2);
+void saveSites(const Site sites[MAX_SITES], bool inMetrics);
 bool saveIpLookup(bool enabled, const String &url1, const String &url2);
 void setVerified();
 void setHookAnnounced();
@@ -60,6 +72,8 @@ bool validTz(const String &text);
 bool validHook(const String &text);
 bool validLookupUrl(const String &text);  // https://, no spaces; empty is not valid
 bool validAlertUrl(const String &text);   // http:// or https://, no spaces; empty is valid
+bool validSiteUrl(const String &text);     // as an alert URL, 120 at most, not empty
+bool validSiteName(const String &text);    // 1 to 24 plain characters, nothing HTML could misread
 bool validToken(const String &text);      // printable, no spaces, 120 at most; empty is valid
 bool validTelegramToken(const String &text);  // digits, a colon, then letters, digits, _ or -
 bool validTelegramChat(const String &text);   // a number, or @channelname

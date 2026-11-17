@@ -327,7 +327,8 @@ you give (`https://` or `http://`):
  "message":"Internet was down 4m 12s (ISP side). Back at 14:03.","time":1794904199}
 ```
 
-`event` is `outage_ended` or `test`, and `time` is Unix time (0 if the clock
+`event` is `outage_ended`, `test`, or for [website checks](#website-checks)
+`site_down`, `site_up` or `cert_expiring`, and `time` is Unix time (0 if the clock
 is not set yet). Any 2xx answer counts as delivered.
 
 ### Good to know
@@ -338,7 +339,8 @@ is not set yet). Any 2xx answer counts as delivered.
   new value; to remove a channel, tick **Remove it**.
 - An alert that cannot be delivered is retried 6 times, 20 seconds apart,
   for each channel separately.
-- `https://` addresses are checked against the built-in root certificates.
+- `https://` addresses are checked against the built-in copy of Mozilla's
+  root certificates.
   `http://` is meant for servers on your own network.
 
 ## The web dashboard
@@ -362,6 +364,8 @@ browser on any phone or computer on the same network.
   of the 200-entry log does not empty the calendar.
 - **Outage log:** all 200 entries, with anything still in progress at the
   top.
+- **Websites:** the state of up to five websites you choose. See
+  [Website checks](#website-checks).
 - **ISP report:** a plain page for one month, made to be printed or saved
   as a PDF. See [ISP report](#isp-report).
 - **Download log (CSV):** every entry with full date, time and duration in
@@ -369,7 +373,7 @@ browser on any phone or computer on the same network.
 - **Public IP log:** your current public address and its last 50 changes.
   See [Public IP log](#public-ip-log).
 - **Settings:** change the alert channels (Discord, ntfy, Telegram,
-  webhook), timezone, ping targets, the
+  webhook), the websites to check, timezone, ping targets, the
   public IP lookup and the admin password. The monitor restarts to apply
   them.
 - **Update firmware:** install a new version from your browser, with no USB
@@ -415,6 +419,61 @@ to get that screen whichever one the display is on, for example
 since it shows nothing the dashboard does not. The pictures of the four
 screens in this README were made this way. Boards without a display answer
 404.
+
+## Website checks
+
+The monitor can also keep an eye on up to five websites: your own site, a
+service you depend on, a device on your network with a web page. Add them
+in **Settings** under **Websites**, each with a short name and an address
+starting with `https://` or `http://`. The **Websites** page on the
+dashboard then shows, for each one:
+
+- its state: UP, DOWN, or WAITING before the first check
+- response time and HTTP status of the latest check
+- uptime over 24 hours and 7 days
+- days left on its HTTPS certificate
+- its own log of the last 20 down periods
+
+How it checks:
+
+- One site at a time, on a slow rotation: a check every 30 seconds at
+  most, and never more than once a minute for the same site. With five
+  sites each is checked every two and a half minutes.
+- A check fails when there is no response, a timeout (8 seconds), a
+  certificate that does not verify, or a 5xx status. Anything else the
+  server answers, including redirects and 404, means it is up. A site is
+  **DOWN after 3 failed checks in a row**.
+- `https://` sites are verified against Mozilla's list of root
+  certificates, which is built into the firmware, and against the date.
+  An expired or mismatched certificate fails the check and the page says
+  why.
+- The certificate's expiry date is read on every check. You get one
+  warning when it has 14 days left and another at 3 days.
+- **Checks stop while the internet itself is down** or DNS is failing, and
+  start again a minute after it comes back. An ISP outage gives you one
+  ISP alert, not five "site down" alerts.
+- Response time is the time to connect plus the time the server took to
+  answer. The encryption handshake is left out, because on a
+  microcontroller that is several seconds of its own arithmetic.
+
+Alerts go to the channels you set up in [Step 6](#step-6-optional-alerts)
+when a site goes down, when it comes back, and when its certificate is
+close to expiry. Website trouble is kept apart from ISP outages: it is not
+written to the outage log, does not appear in the ISP report or on the
+calendar, and never counts against the internet uptime figures.
+
+The list of sites stays on the device. It is shown on the dashboard, which
+only your own network can reach. It is left out of `/metrics` unless you
+tick **Include these websites in /metrics** in Settings, which adds
+`uptime_sentinel_site_up`, `uptime_sentinel_site_response_seconds`,
+`uptime_sentinel_site_http_status` and
+`uptime_sentinel_site_cert_expiry_days`, each labelled with the site's name
+(never its address).
+
+Good to know: uptime is counted from a site's first check, and a site
+whose address you change starts again from nothing. Time during which
+checks were paused counts as up. Website checks need the clock, so they
+start once the monitor has reached the internet.
 
 ## ISP report
 
@@ -774,6 +833,7 @@ Type a command and press Enter:
 | `sim newip` | Pretend the next public IP lookup returns `203.0.113.7`, to test the public IP log. The lookup after that logs the change back |
 | `clearlog` | Erase the outage log |
 | `clearip` | Erase the public IP log |
+| `sim cert` | Pretend the first website's certificate expires in ten days, to test the expiry warning |
 | `sim days` | Add made-up downtime to nine days of the calendar, to see the shading |
 | `cleardays` | Erase the calendar and rebuild it from the outage log |
 
@@ -826,6 +886,9 @@ real hardware.
 | `src/timekeeper.cpp` | NTP, timezone, time formatting |
 | `src/settings.cpp` | WiFi, webhook and other settings in NVS; admin password hash |
 | `src/portal.cpp` | Setup access point and captive portal |
+| `src/sites.cpp` | Website checks: rotation, DOWN logic, certificate warnings, per-site log |
+| `src/fetch.cpp` | One HTTP or HTTPS request with our own certificate check against the CA bundle |
+| `src/ca_bundle.cpp` | Mozilla's root certificates in compact form (generated by `tools/make_ca.py`) |
 | `src/alerts.cpp` | Alerts to Discord, ntfy, Telegram and a generic webhook |
 | `src/pubip.cpp` | Public IP lookup over verified HTTPS, and its change log |
 | `src/display.cpp` | Drawing primitives, scaling, change tracking and screenshots |

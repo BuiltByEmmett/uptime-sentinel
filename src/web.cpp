@@ -21,6 +21,7 @@
 #include "report.h"
 #include "screens.h"
 #include "settings.h"
+#include "sites.h"
 #include "stats.h"
 #include "timekeeper.h"
 
@@ -100,7 +101,7 @@ const char DASHBOARD[] PROGMEM = R"HTML(
 <h2>OUTAGE LOG</h2>
 <table><thead><tr><th>Started</th><th>Lasted</th><th>Cause</th></tr></thead>
 <tbody id="log"></tbody></table>
-<p><a href="/report">ISP report</a> &middot; <a href="/log.csv">Download log (CSV)</a> &middot; <a href="/ip">Public IP log</a>
+<p><a href="/sites">Websites</a> &middot; <a href="/report">ISP report</a> &middot; <a href="/log.csv">Download log (CSV)</a> &middot; <a href="/ip">Public IP log</a>
 &middot; <a href="/settings">Settings</a>
 &middot; <a href="/update">Update firmware</a></p>
 <p id="foot"></p>
@@ -432,6 +433,119 @@ void handleMetrics() {
 void handleReport() {
   if (!allowed(false)) return;
   report::send(server);
+}
+
+// The website checks: one summary row per site, then each site's own log.
+void handleSites() {
+  if (!allowed(false)) return;
+  const settings::Config &conf = settings::get();
+  uint32_t now = timekeeper::now();
+  server.sendHeader("Cache-Control", "no-store");
+  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  String page = html::pageStart("Uptime Sentinel websites");
+  page += F("<meta http-equiv=\"refresh\" content=\"30\">"
+            "<p><a href=\"/\">&larr; Back to the dashboard</a></p><h2>WEBSITES</h2>");
+  if (!sites::any()) {
+    page += F("<p>No websites are being checked. Add up to five in "
+              "<a href=\"/settings\">Settings</a>.</p>");
+    page += FPSTR(html::PAGE_END);
+    server.send(200, "text/html", page);
+    return;
+  }
+  const monitor::State &m = monitor::state();
+  if (m.outage) {
+    page += F("<p class=\"warn\">The internet connection is down, so website checks are "
+              "paused. The figures below are from before the outage.</p>");
+  }
+  server.send(200, "text/html", page);
+
+  static sites::View v;
+  for (size_t i = 0; i < settings::MAX_SITES; i++) {
+    sites::snapshot(i, v);
+    if (!v.used) continue;
+    const char *stateText = v.state == sites::State::UP     ? "&#9650; UP"
+                            : v.state == sites::State::DOWN ? "&#9660; DOWN"
+                                                            : "&#8230; WAITING";
+    const char *stateClass = v.state == sites::State::UP ? "g" : v.state == sites::State::DOWN ? "o" : "m";
+    page = "<h3>" + html::escape(conf.site[i].name) + "</h3><p style=\"margin:2px 0 0;"
+           "word-break:break-all\">" + html::escape(conf.site[i].url) + "</p>";
+    page += "<div class=\"grid\"><div class=\"cell\">STATE<b class=\"";
+    page += stateClass;
+    page += "\" style=\"font-size:16px\">";
+    page += stateText;
+    page += "</b></div><div class=\"cell\">RESPONSE<b>";
+    page += v.code != 0 && v.ms >= 0 ? String(v.ms) + " ms" : String("--");
+    page += "</b></div><div class=\"cell\">STATUS<b>";
+    page += v.code != 0 ? "HTTP " + String(v.code) : String("--");
+    page += "</b></div><div class=\"cell\">24 HOURS<b>" + pct(v.pct24h);
+    page += "</b></div><div class=\"cell\">7 DAYS<b>" + pct(v.pct7d);
+    page += "</b></div><div class=\"cell\">CERTIFICATE<b";
+    if (!v.https) {
+      page += ">none</b>";
+    } else if (v.certExpiry == 0) {
+      page += ">--</b>";
+    } else {
+      int32_t left = static_cast<int32_t>(v.certExpiry - now);
+      int days = left > 0 ? left / 86400 : 0;
+      if (days <= sites::CERT_WARN_DAYS) page += " class=\"o\"";
+      page += left > 0 ? ">" + String(days) + (days == 1 ? " day" : " days") : String(">EXPIRED");
+      page += days <= sites::CERT_WARN_DAYS && left > 0 ? " !</b>" : "</b>";
+    }
+    page += "</div></div><p>";
+    if (v.checkedAt == 0) {
+      page += "Not checked yet.";
+    } else {
+      char stamp[16];
+      timekeeper::formatStamp(v.checkedAt, stamp, sizeof(stamp));
+      page += "Last checked ";
+      page += stamp;
+      if (v.reason[0]) {
+        page += ": failed (" + html::escape(v.reason) + "), " + String(v.fails) +
+                (v.fails == 1 ? " time" : " times") + " in a row";
+      }
+      page += ".";
+      if (v.https && v.certExpiry != 0) {
+        time_t t = v.certExpiry;
+        struct tm tm;
+        localtime_r(&t, &tm);
+        char date[12];
+        strftime(date, sizeof(date), "%Y-%m-%d", &tm);
+        page += " Certificate valid until ";
+        page += date;
+        page += ".";
+      }
+    }
+    page += "</p><table><thead><tr><th>Went down</th><th>Lasted</th></tr></thead><tbody>";
+    if (v.downStart != 0) {
+      char stamp[16];
+      timekeeper::formatStamp(v.downStart, stamp, sizeof(stamp));
+      page += "<tr><td>";
+      page += stamp;
+      page += "</td><td class=\"o\">" + duration(now > v.downStart ? now - v.downStart : 0) +
+              " (still down)</td></tr>";
+    }
+    for (size_t k = 0; k < v.downCount; k++) {
+      char stamp[16];
+      timekeeper::formatStamp(v.downs[k].start, stamp, sizeof(stamp));
+      page += "<tr><td>";
+      page += stamp;
+      page += "</td><td>" + duration(v.downs[k].duration) + "</td></tr>";
+    }
+    if (v.downStart == 0 && v.downCount == 0) {
+      page += "<tr><td colspan=\"2\" class=\"m\">No down periods logged</td></tr>";
+    }
+    page += "</tbody></table>";
+    server.sendContent(page);
+  }
+  page = F("<h2>HOW THIS WORKS</h2><p>Sites are checked one at a time, each no more than once "
+           "a minute. A site counts as down after 3 failed checks in a row: no response, a "
+           "timeout, a certificate that does not verify, or a 5xx status. Response time is "
+           "the time to connect plus the time to answer. Checks pause while the internet itself is down, and "
+           "website trouble never counts against the internet uptime figures. The last 20 "
+           "down periods of each site are kept. This page reloads every 30 seconds.</p>");
+  page += FPSTR(html::PAGE_END);
+  server.sendContent(page);
+  server.sendContent("");
 }
 
 // The public IP log. This page is the only place the address is shown.
@@ -806,6 +920,21 @@ void sendSettings(const String &notice, bool testNotice = false) {
             "<input id=\"whurl\" name=\"whurl\" type=\"url\" maxlength=\"240\" "
             "autocomplete=\"off\" placeholder=\"https://example.com/hook\">");
   page += channelFooter(alerts::WEBHOOK, "clearwh");
+  page += F("<h2>WEBSITES</h2><p>Up to five websites to keep an eye on. Give each a short "
+            "name and its address, starting with https:// or http://. Empty the address to "
+            "remove one. Alerts go to the channels above when a site goes down, comes back, "
+            "or its certificate is about to expire.</p>");
+  for (size_t i = 0; i < settings::MAX_SITES; i++) {
+    String n = String(i + 1);
+    page += "<label for=\"sn" + n + "\">Website " + n + " name</label><input type=\"text\" id=\"sn" +
+            n + "\" name=\"sn" + n + "\" maxlength=\"24\" value=\"" + html::escape(conf.site[i].name) +
+            "\"><label for=\"su" + n + "\">Website " + n + " address</label><input type=\"url\" "
+            "id=\"su" + n + "\" name=\"su" + n + "\" maxlength=\"120\" autocapitalize=\"none\" "
+            "placeholder=\"https://example.com\" value=\"" + html::escape(conf.site[i].url) + "\">";
+  }
+  page += F("<label class=\"check\"><input type=\"checkbox\" name=\"sitemet\" value=\"1\"");
+  if (conf.siteMetrics) page += F(" checked");
+  page += F("> Include these websites in /metrics (which needs no password)</label>");
   page += F("<h2>TIME AND TARGETS</h2>");
   page += html::optionFields();
   page += F("<h2>PUBLIC IP LOG</h2><label class=\"check\"><input type=\"checkbox\" "
@@ -930,6 +1059,36 @@ void handleSettingsPost() {
   } else if (html::readOptions(server, tz, target1, target2, error)) {
     html::readAdmin(server, admin, adminChange, error);
   }
+  settings::Site newSites[settings::MAX_SITES];
+  for (size_t i = 0; i < settings::MAX_SITES && error.length() == 0; i++) {
+    settings::Site &site = newSites[i];
+    site.name = server.arg("sn" + String(i + 1));
+    site.url = server.arg("su" + String(i + 1));
+    site.name.trim();
+    site.url.trim();
+    if (site.url.length() == 0) {
+      site.name = "";
+      continue;
+    }
+    if (!settings::validSiteUrl(site.url)) {
+      error = "Website " + String(i + 1) + ": the address must start with https:// or http://, "
+              "have no spaces and be 120 characters at most.";
+      break;
+    }
+    if (site.name.length() == 0) {
+      // No name given: use the host part of the address.
+      int start = site.url.indexOf("//") + 2;
+      int end = site.url.indexOf('/', start);
+      site.name = site.url.substring(start, end < 0 ? site.url.length() : end);
+      if (site.name.length() > settings::SITE_NAME_MAX_LEN) {
+        site.name.remove(settings::SITE_NAME_MAX_LEN);
+      }
+    }
+    if (!settings::validSiteName(site.name)) {
+      error = "Website " + String(i + 1) + ": the name can be up to 24 letters, digits and "
+              "simple punctuation.";
+    }
+  }
   String ipUrl1 = server.arg("ipurl1");
   String ipUrl2 = server.arg("ipurl2");
   ipUrl1.trim();
@@ -958,6 +1117,7 @@ void handleSettingsPost() {
   }
   settings::saveOptions(tz, target1, target2);
   settings::saveIpLookup(server.arg("ipon") == "1", ipUrl1, ipUrl2);
+  settings::saveSites(newSites, server.arg("sitemet") == "1");
   if (server.arg("clearhook") == "1" && hook.length() == 0) settings::saveHook("");
   else if (hook.length()) settings::saveHook(hook);
   // Each box that was filled in replaces what was saved; empty ones keep it.
@@ -1000,6 +1160,7 @@ void begin() {
   server.on("/api/days", HTTP_GET, handleDays);
   server.on("/log.csv", HTTP_GET, handleCsv);
   server.on("/metrics", HTTP_GET, handleMetrics);
+  server.on("/sites", HTTP_GET, handleSites);
   server.on("/report", HTTP_GET, handleReport);
   server.on("/ip", HTTP_GET, handleIp);
   server.on("/settings", HTTP_GET, handleSettingsGet);
