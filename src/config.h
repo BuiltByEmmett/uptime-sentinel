@@ -14,6 +14,11 @@ constexpr size_t ROUNDS_5MIN = 150;
 constexpr uint32_t DNS_EVERY_ROUNDS = 15;
 constexpr uint32_t DNS_TIMEOUT_MS = 900;
 
+// First ISP hop: looked up when the internet is first reachable, then daily.
+constexpr uint32_t HOP_RECHECK_SEC = 24UL * 3600;
+constexpr uint32_t HOP_RETRY_SEC = 3600;    // after a recheck that found nothing
+constexpr uint8_t HOP_PROBES = 3;
+
 // SLOW: judged over the last minute of rounds.
 constexpr size_t SLOW_WINDOW_ROUNDS = 30;
 constexpr uint8_t SLOW_LOSS_ENTER_PCT = 20;
@@ -64,5 +69,23 @@ constexpr uint16_t YELLOW = rgb565(0xFF, 0xD2, 0x3D);  // degraded: slow or DNS 
 //   DNS    internet reachable but name lookups fail
 //   POWER  the monitor itself was without power
 //   LAN    router does not answer, monitor on a wired port
-enum class Cause : uint8_t { ISP = 0, WIFI = 1, SLOW = 2, DNS = 3, POWER = 4, LAN = 5 };
-constexpr uint8_t CAUSE_MAX = 5;  // highest value a stored log entry may carry
+// When the first ISP hop can be pinged (see ping.h), an ISP outage is logged
+// as one of these two instead:
+//   ISP_LOCAL     the first hop is dead too: the line or the ISP's local network
+//   ISP_UPSTREAM  the first hop answers: the fault is further inside the ISP
+enum class Cause : uint8_t {
+  ISP = 0,
+  WIFI = 1,
+  SLOW = 2,
+  DNS = 3,
+  POWER = 4,
+  LAN = 5,
+  ISP_LOCAL = 6,
+  ISP_UPSTREAM = 7,
+};
+constexpr uint8_t CAUSE_MAX = 7;  // highest value a stored log entry may carry
+
+// The three ISP causes count against uptime and send an alert.
+constexpr bool isIsp(Cause c) {
+  return c == Cause::ISP || c == Cause::ISP_LOCAL || c == Cause::ISP_UPSTREAM;
+}

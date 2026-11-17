@@ -29,6 +29,8 @@ uint32_t softStreakStart = 0;
 Cause toCause(RoundClass c) {
   if (c == RoundClass::WIFI) return Cause::WIFI;
   if (c == RoundClass::LAN) return Cause::LAN;
+  if (c == RoundClass::ISP_LOCAL) return Cause::ISP_LOCAL;
+  if (c == RoundClass::ISP_UPSTREAM) return Cause::ISP_UPSTREAM;
   return Cause::ISP;
 }
 
@@ -203,7 +205,10 @@ bool activeEvent(Cause &cause, uint32_t &startMono) {
 RoundClass classify(const ping::Round &r) {
   bool internet = r.rtt[ping::TARGET1] >= 0 || r.rtt[ping::TARGET2] >= 0;
   if (internet) return RoundClass::OK;
-  if (r.rtt[ping::ROUTER] >= 0) return RoundClass::ISP;
+  // With a first ISP hop to ask, an ISP failure can be placed: a hop that
+  // still answers (which also proves the router works) puts it further in.
+  if (r.hopActive && r.rtt[ping::HOP] >= 0) return RoundClass::ISP_UPSTREAM;
+  if (r.rtt[ping::ROUTER] >= 0) return r.hopActive ? RoundClass::ISP_LOCAL : RoundClass::ISP;
   // The local link failed. Which one it is decides the tag.
   return r.wired ? RoundClass::LAN : RoundClass::WIFI;
 }
@@ -213,6 +218,8 @@ const char *className(RoundClass c) {
     case RoundClass::OK: return "OK";
     case RoundClass::ISP: return "ISP-FAIL";
     case RoundClass::LAN: return "LAN-FAIL";
+    case RoundClass::ISP_LOCAL: return "ISP-LOCAL-FAIL";
+    case RoundClass::ISP_UPSTREAM: return "ISP-UPSTREAM-FAIL";
     default: return "WIFI-FAIL";
   }
 }
@@ -224,9 +231,13 @@ const char *causeName(Cause c) {
     case Cause::SLOW: return "SLOW";
     case Cause::DNS: return "DNS";
     case Cause::LAN: return "LAN";
+    case Cause::ISP_LOCAL: return "ISP LOCAL";
+    case Cause::ISP_UPSTREAM: return "ISP UPSTREAM";
     default: return "POWER";
   }
 }
+
+const char *causeTag(Cause c) { return c == Cause::ISP_UPSTREAM ? "ISP UP" : causeName(c); }
 
 const char *stateName() {
   if (!st.haveData) return "...";
@@ -247,6 +258,7 @@ void onRound(const ping::Round &r) {
   }
   st.internetMs = replies ? static_cast<int16_t>(sum / replies) : -1;
   for (int t = 0; t < ping::TARGETS; t++) st.rtt[t] = r.rtt[t];
+  st.hopActive = r.hopActive;
   if (r.dns >= 0) st.dnsOk = r.dns;
   st.lastClass = c;
   st.haveData = true;

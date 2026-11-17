@@ -14,7 +14,10 @@ namespace {
 
 constexpr uint8_t ICMP_ECHO_REQUEST = 8;
 constexpr uint8_t ICMP_ECHO_REPLY = 0;
-constexpr uint16_t ECHO_ID = 0x554D;  // "UM"
+constexpr uint8_t ICMP_TIME_EXCEEDED = 11;
+constexpr uint8_t IP_PROTO_ICMP = 1;
+constexpr uint16_t ECHO_ID = 0x554D;   // "UM"
+constexpr uint16_t PROBE_ID = 0x5548;  // "UH", the hop search
 
 struct __attribute__((packed)) EchoPacket {
   uint8_t type;
@@ -28,6 +31,9 @@ struct __attribute__((packed)) EchoPacket {
 QueueHandle_t results = nullptr;
 volatile Sim simMode = Sim::NONE;
 uint16_t seqBase = 0;
+
+volatile HopState hopState = HopState::SEARCHING;
+volatile uint32_t hopAddr = 0;
 
 // RFC 1071 internet checksum.
 uint16_t checksum(const uint8_t *data, size_t len) {
@@ -122,6 +128,141 @@ void pingAll(const uint32_t addrs[TARGETS], int16_t rtt[TARGETS]) {
   lwip_close(sock);
 }
 
+// Sends one echo request that expires at the second router on the way to
+// `dest` and returns the address that reports it, or 0. `direct` is set when
+// `dest` itself answered, meaning it is no further than that away.
+uint32_t ttlProbe(uint32_t dest, bool &direct) {
+  static uint16_t probeSeq = 0;
+  int sock = lwip_socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+  if (sock < 0) return 0;
+  int ttl = 2;
+  if (lwip_setsockopt(sock, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl)) != 0) {
+    lwip_close(sock);
+    return 0;
+  }
+
+  uint16_t seq = ++probeSeq;
+  EchoPacket pkt;
+  memset(&pkt, 0, sizeof(pkt));
+  pkt.type = ICMP_ECHO_REQUEST;
+  pkt.id = htons(PROBE_ID);
+  pkt.seq = htons(seq);
+  for (size_t b = 0; b < sizeof(pkt.payload); b++) pkt.payload[b] = 'a' + (b % 26);
+  pkt.checksum = checksum(reinterpret_cast<uint8_t *>(&pkt), sizeof(pkt));
+
+  sockaddr_in to;
+  memset(&to, 0, sizeof(to));
+  to.sin_len = sizeof(to);
+  to.sin_family = AF_INET;
+  to.sin_addr.s_addr = dest;
+
+  uint32_t found = 0;
+  if (lwip_sendto(sock, &pkt, sizeof(pkt), 0, reinterpret_cast<sockaddr *>(&to), sizeof(to)) ==
+      static_cast<int>(sizeof(pkt))) {
+    const int64_t deadline = esp_timer_get_time() + cfg::PING_TIMEOUT_MS * 1000LL;
+    uint8_t buf[128];
+    for (;;) {
+      int64_t left = deadline - esp_timer_get_time();
+      if (left <= 0) break;
+      fd_set readable;
+      FD_ZERO(&readable);
+      FD_SET(sock, &readable);
+      timeval tv;
+      tv.tv_sec = left / 1000000;
+      tv.tv_usec = left % 1000000;
+      if (lwip_select(sock + 1, &readable, nullptr, nullptr, &tv) <= 0) break;
+
+      sockaddr_in from;
+      socklen_t fromLen = sizeof(from);
+      int n = lwip_recvfrom(sock, buf, sizeof(buf), 0, reinterpret_cast<sockaddr *>(&from),
+                            &fromLen);
+      if (n < 20) continue;
+      int ipHeader = (buf[0] & 0x0F) * 4;
+      if (n < ipHeader + 8) continue;
+      const uint8_t *icmp = buf + ipHeader;
+
+      if (icmp[0] == ICMP_ECHO_REPLY) {
+        uint16_t id = (icmp[4] << 8) | icmp[5];
+        uint16_t gotSeq = (icmp[6] << 8) | icmp[7];
+        if (id == PROBE_ID && gotSeq == seq && from.sin_addr.s_addr == dest) {
+          direct = true;
+          break;
+        }
+        continue;
+      }
+      if (icmp[0] != ICMP_TIME_EXCEEDED) continue;
+      // The report quotes the IP header and first 8 bytes of what expired:
+      // check it is our own probe before believing the sender.
+      if (n < ipHeader + 8 + 20) continue;
+      const uint8_t *inner = icmp + 8;
+      int innerHeader = (inner[0] & 0x0F) * 4;
+      if (n < ipHeader + 8 + innerHeader + 8 || inner[9] != IP_PROTO_ICMP) continue;
+      const uint8_t *quoted = inner + innerHeader;
+      uint16_t id = (quoted[4] << 8) | quoted[5];
+      uint16_t gotSeq = (quoted[6] << 8) | quoted[7];
+      if (quoted[0] != ICMP_ECHO_REQUEST || id != PROBE_ID || gotSeq != seq) continue;
+      found = from.sin_addr.s_addr;
+      break;
+    }
+  }
+  lwip_close(sock);
+  return found;
+}
+
+// 10.0.0.0/8, 172.16.0.0/12 and 192.168.0.0/16. A second hop in one of these
+// usually means another router of the user's own sits in between.
+bool isPrivate(uint32_t addr) {
+  uint32_t a = ntohl(addr);
+  return (a >> 24) == 10 || (a >> 20) == 0xAC1 || (a >> 16) == 0xC0A8;
+}
+
+// Looks for the first ISP hop and decides whether it can be used. Blocks the
+// ping task for a moment, a few seconds at worst, so it only runs while the
+// internet is reachable. False if a hop that was in use could not be found
+// this time; it is kept, and the search should be repeated sooner.
+bool findHop() {
+  uint32_t found = 0;
+  bool direct = false;
+  for (int attempt = 0; attempt < cfg::HOP_PROBES && found == 0 && !direct; attempt++) {
+    found = ttlProbe(settings::targetAddr(attempt % 2), direct);
+  }
+
+  HopState state = HopState::NONE;
+  if (found != 0) {
+    if (isPrivate(found)) {
+      state = HopState::PRIVATE;
+    } else {
+      state = HopState::NO_REPLY;
+      uint32_t addrs[TARGETS] = {0, 0, 0, 0};
+      addrs[HOP] = found;
+      int16_t rtt[TARGETS];
+      for (int attempt = 0; attempt < cfg::HOP_PROBES && state != HopState::ACTIVE; attempt++) {
+        pingAll(addrs, rtt);
+        if (rtt[HOP] >= 0) state = HopState::ACTIVE;
+      }
+    }
+  }
+  // One failed recheck should not switch off a hop that has been working.
+  if (state != HopState::ACTIVE && hopState == HopState::ACTIVE &&
+      (found == 0 || found == hopAddr)) {
+    Serial.println("[hop] recheck got no answer; keeping the current first hop");
+    return false;
+  }
+  hopAddr = found;
+  hopState = state;
+
+  static const char *const WHAT[] = {"searching", "answers pings, in use",
+                                     "does not answer pings, not used",
+                                     "private address (double NAT?), not used", "not found"};
+  if (found != 0) {
+    Serial.printf("[hop] first ISP hop %s: %s\n", IPAddress(found).toString().c_str(),
+                  WHAT[static_cast<int>(state)]);
+  } else {
+    Serial.printf("[hop] first ISP hop %s\n", WHAT[static_cast<int>(state)]);
+  }
+  return true;
+}
+
 // Asks the network's own DNS server (normally the router, which forwards to
 // the ISP) for an A record, bypassing the ESP32's resolver cache. True if a
 // usable answer came back in time.
@@ -200,6 +341,8 @@ void task(void *) {
   uint32_t roundNo = 0;
   size_t dnsName = 0;
   bool dnsFailing = false;
+  uint32_t hopGateway = 0;    // the gateway the current hop result belongs to
+  uint32_t hopNextCheck = 0;  // seconds since boot
 
   TickType_t wake = xTaskGetTickCount();
   for (;;) {
@@ -209,19 +352,30 @@ void task(void *) {
     round.wired = net::wired();
     round.dns = -1;
 
-    uint32_t addrs[TARGETS] = {0, 0, 0};
+    uint32_t addrs[TARGETS] = {0, 0, 0, 0};
     if (round.linkUp) {
       addrs[ROUTER] = static_cast<uint32_t>(net::gatewayIP());
       addrs[TARGET1] = settings::targetAddr(0);
       addrs[TARGET2] = settings::targetAddr(1);
+      // A different gateway means a different network: forget the old hop.
+      if (addrs[ROUTER] != hopGateway) {
+        hopGateway = addrs[ROUTER];
+        hopState = HopState::SEARCHING;
+        hopAddr = 0;
+        hopNextCheck = 0;
+      }
+      if (hopState == HopState::ACTIVE) addrs[HOP] = hopAddr;
     }
+    round.hopActive = addrs[HOP] != 0;
     pingAll(addrs, round.rtt);
+    bool reallyOnline = round.rtt[TARGET1] >= 0 || round.rtt[TARGET2] >= 0;
 
     Sim sim = simMode;
-    if (sim == Sim::ISP || sim == Sim::WIFI) {
+    if (sim == Sim::ISP || sim == Sim::ISPLOCAL || sim == Sim::WIFI) {
       round.rtt[TARGET1] = -1;
       round.rtt[TARGET2] = -1;
     }
+    if (sim == Sim::ISPLOCAL || sim == Sim::WIFI) round.rtt[HOP] = -1;
     if (sim == Sim::WIFI) round.rtt[ROUTER] = -1;
     if (sim == Sim::SLOW) {
       for (int t = TARGET1; t <= TARGET2; t++) {
@@ -242,6 +396,12 @@ void task(void *) {
     roundNo++;
 
     xQueueSend(results, &round, 0);
+
+    if (reallyOnline && round.monoSec >= hopNextCheck) {
+      bool settled = findHop();
+      hopNextCheck = round.monoSec + (settled ? cfg::HOP_RECHECK_SEC : cfg::HOP_RETRY_SEC);
+      wake = xTaskGetTickCount();  // the search may have overrun this round's slot
+    }
     vTaskDelayUntil(&wake, pdMS_TO_TICKS(cfg::PING_INTERVAL_MS));
   }
 }
@@ -256,5 +416,7 @@ void begin() {
 bool nextRound(Round &out) { return results && xQueueReceive(results, &out, 0) == pdTRUE; }
 
 void setSim(Sim mode) { simMode = mode; }
+
+HopInfo hopInfo() { return {hopState, hopAddr}; }
 
 }  // namespace ping

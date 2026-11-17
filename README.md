@@ -44,6 +44,9 @@ and leave it running.
   2 seconds.
 - Tells an **ISP outage** (router answers, internet does not) apart from a
   **WiFi problem** (router does not answer).
+- Finds your ISP's first router and pings it too, so an ISP outage is
+  logged as **ISP LOCAL** (your line or the ISP's local equipment) or
+  **ISP UPSTREAM** (further inside the ISP's network).
 - Waits for three failed rounds in a row before calling it an outage, so one
   lost packet never raises a false alarm.
 - Notices when the connection is up but bad: **SLOW** (heavy packet loss or
@@ -292,6 +295,9 @@ browser on any phone or computer on the same network.
 - **Live status:** ONLINE / OFFLINE / SLOW / NO DNS, latency, packet loss,
   jitter, a five-minute graph, and each target's reply time. It refreshes
   every two seconds.
+- **First ISP hop:** its address, its reply time, and whether ISP outages
+  are being split into ISP LOCAL and ISP UPSTREAM (see
+  [How outages are classified](#how-outages-are-classified)).
 - **Uptime:** the same figures as the UPTIME screen.
 - **Outage log:** all 200 entries, with anything still in progress at the
   top.
@@ -426,8 +432,8 @@ for the range are along the bottom.
 ### 3. OUTAGES
 
 The log, newest first: when it started, how long it lasted, and a tag.
-`ISP` is orange, `SLOW` and `DNS` are yellow, `WIFI`, `LAN` and `POWER` are
-grey.
+`ISP`, `ISP LOCAL` and `ISP UP` (short for ISP UPSTREAM) are orange, `SLOW`
+and `DNS` are yellow, `WIFI`, `LAN` and `POWER` are grey.
 Anything still in progress sits on the top row with its duration counting
 up.
 
@@ -461,6 +467,39 @@ timeout.
 - If the cause changes part-way through (the ISP drops, then the WiFi does
   too), the outage is split so each log entry has the right tag.
 
+### Whose fault is it: ISP LOCAL and ISP UPSTREAM
+
+"ISP outage" covers two different faults: the line to your home is down, or
+your line is fine and something further inside the ISP's network is broken.
+The monitor tells them apart by also pinging the **first ISP hop**, the
+first router beyond your own.
+
+It finds that router when the internet is first reachable after start-up,
+and again once a day, by sending a ping that is only allowed to travel two
+hops (TTL 2). The router where it expires reports back, which reveals its
+address. From then on it is pinged every round with the other targets.
+
+| Router | First ISP hop | 1.1.1.1 / 8.8.8.8 | The round counts as |
+|---|---|---|---|
+| replies | fails | both fail | ISP LOCAL failure |
+| any | replies | both fail | ISP UPSTREAM failure |
+
+Both count as ISP outages for the uptime figures and the Discord message.
+If the fault moves during an outage, the log gets one entry for each part.
+
+The feature switches itself off, and outages are logged as plain `ISP` as
+before, when:
+
+- the first hop does not answer pings (some ISPs block them);
+- the first hop has a private address (`10.x.x.x`, `172.16.x.x` to
+  `172.31.x.x`, `192.168.x.x`). That usually means a second router of your
+  own sits between the monitor's router and the ISP (double NAT), so the hop
+  is not the ISP's. Some ISPs also use such addresses for their own first
+  router; the monitor cannot tell the difference and stays on the safe side;
+- no router reports the expired ping at all.
+
+The dashboard says which case applies, under the target latencies.
+
 ### Up, but not working properly
 
 While the internet is reachable, two more things are watched. Neither is
@@ -486,9 +525,10 @@ power cuts and the monitor being unplugged; it cannot tell those apart.
 
 ### What counts against uptime
 
-**Uptime percentages and outage counts use ISP outages only.** `WIFI`,
-`LAN`, `SLOW`, `DNS` and `POWER` are listed in the log but never affect the
-statistics, and only ISP outages send a Discord message. The idea is that
+**Uptime percentages and outage counts use ISP outages only** (`ISP`,
+`ISP LOCAL` and `ISP UPSTREAM`). `WIFI`, `LAN`, `SLOW`, `DNS` and `POWER`
+are listed in the log but never affect the statistics, and only ISP outages
+send a Discord message. The idea is that
 the monitor sits on WiFi while the things you care about may be wired, so a
 weak WiFi signal at the monitor should not count against your ISP.
 
@@ -549,7 +589,8 @@ Type a command and press Enter:
 
 | Command | Effect |
 |---|---|
-| `sim isp` | Pretend both internet targets stopped replying |
+| `sim isp` | Pretend both internet targets stopped replying (logged as ISP UPSTREAM when the first hop is in use) |
+| `sim isplocal` | Pretend the internet targets and the first ISP hop stopped replying (ISP LOCAL) |
 | `sim wifi` | Pretend nothing replies |
 | `sim slow` | Add 300 ms to every internet reply (takes about 30 s to register as SLOW) |
 | `sim dns` | Pretend name lookups fail |
@@ -592,7 +633,7 @@ real hardware.
 
 | File | Job |
 |---|---|
-| `src/ping.cpp` | ICMP echo on raw sockets, in its own task (no ping library) |
+| `src/ping.cpp` | ICMP echo on raw sockets, in its own task (no ping library); first ISP hop search |
 | `src/ping.cpp` (also) | DNS lookup check, sent straight to the network's DNS server |
 | `src/net.cpp` | The network link: WiFi, plus Ethernet on boards that have it |
 | `src/monitor.cpp` | Outage, SLOW and DNS logic; latency history |

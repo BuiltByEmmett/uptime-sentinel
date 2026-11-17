@@ -8,7 +8,7 @@
 
 namespace monitor {
 
-enum class RoundClass : uint8_t { OK, ISP, WIFI, LAN };
+enum class RoundClass : uint8_t { OK, ISP, WIFI, LAN, ISP_LOCAL, ISP_UPSTREAM };
 
 struct State {
   bool haveData = false;
@@ -24,7 +24,8 @@ struct State {
   Cause degradedCause = Cause::SLOW;
   uint32_t degradedStartMono = 0;
 
-  int16_t rtt[ping::TARGETS] = {-1, -1, -1};
+  int16_t rtt[ping::TARGETS] = {-1, -1, -1, -1};
+  bool hopActive = false;       // the first ISP hop is being pinged; rtt[HOP] is live
   int16_t internetMs = -1;      // last round's internet latency, -1 = failed
   int8_t dnsOk = -1;            // result of the latest DNS lookup, -1 = none yet
   int16_t baselineMs = -1;      // this connection's normal latency, -1 = still learning
@@ -59,6 +60,7 @@ bool activeEvent(Cause &cause, uint32_t &startMono);
 RoundClass classify(const ping::Round &round);
 const char *className(RoundClass c);
 const char *causeName(Cause c);
+const char *causeTag(Cause c);        // the same, at most nine characters, for the screen
 const char *stateName();              // ONLINE, OFFLINE, SLOW, NO DNS or "..."
 
 size_t historyCount();

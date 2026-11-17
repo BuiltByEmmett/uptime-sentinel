@@ -43,7 +43,9 @@ int8_t current = STATUS;
 
 uint16_t causeColor(Cause c) {
   switch (c) {
-    case Cause::ISP: return color::ORANGE;
+    case Cause::ISP:
+    case Cause::ISP_LOCAL:
+    case Cause::ISP_UPSTREAM: return color::ORANGE;
     case Cause::SLOW:
     case Cause::DNS: return color::YELLOW;
     default: return color::LABEL;  // WIFI, LAN and POWER do not count against the ISP
@@ -272,14 +274,14 @@ Label ouStamp[ROWS] = {Label(6, ROW_TOP + 9, 92, &Font10, CAP10, LEFT),
                        Label(6, ROW_TOP + ROW_H + 9, 92, &Font10, CAP10, LEFT),
                        Label(6, ROW_TOP + ROW_H * 2 + 9, 92, &Font10, CAP10, LEFT),
                        Label(6, ROW_TOP + ROW_H * 3 + 9, 92, &Font10, CAP10, LEFT)};
-Label ouDuration[ROWS] = {Label(108, ROW_TOP + 9, 72, &Font10, CAP10, LEFT),
-                          Label(108, ROW_TOP + ROW_H + 9, 72, &Font10, CAP10, LEFT),
-                          Label(108, ROW_TOP + ROW_H * 2 + 9, 72, &Font10, CAP10, LEFT),
-                          Label(108, ROW_TOP + ROW_H * 3 + 9, 72, &Font10, CAP10, LEFT)};
-Label ouTag[ROWS] = {Label(194, ROW_TOP + 9, 40, &Font10, CAP10, RIGHT),
-                     Label(194, ROW_TOP + ROW_H + 9, 40, &Font10, CAP10, RIGHT),
-                     Label(194, ROW_TOP + ROW_H * 2 + 9, 40, &Font10, CAP10, RIGHT),
-                     Label(194, ROW_TOP + ROW_H * 3 + 9, 40, &Font10, CAP10, RIGHT)};
+Label ouDuration[ROWS] = {Label(100, ROW_TOP + 9, 58, &Font10, CAP10, LEFT),
+                          Label(100, ROW_TOP + ROW_H + 9, 58, &Font10, CAP10, LEFT),
+                          Label(100, ROW_TOP + ROW_H * 2 + 9, 58, &Font10, CAP10, LEFT),
+                          Label(100, ROW_TOP + ROW_H * 3 + 9, 58, &Font10, CAP10, LEFT)};
+Label ouTag[ROWS] = {Label(160, ROW_TOP + 9, 74, &Font10, CAP10, RIGHT),
+                     Label(160, ROW_TOP + ROW_H + 9, 74, &Font10, CAP10, RIGHT),
+                     Label(160, ROW_TOP + ROW_H * 2 + 9, 74, &Font10, CAP10, RIGHT),
+                     Label(160, ROW_TOP + ROW_H * 3 + 9, 74, &Font10, CAP10, RIGHT)};
 
 void invalidateRows() {
   for (int i = 0; i < ROWS; i++) {
@@ -347,7 +349,7 @@ void updateOutages() {
     // Something still in progress counts up in its own colour.
     timekeeper::formatDuration(r.duration, text, sizeof(text));
     ouDuration[i].set(text, r.active ? tagColor : color::TEXT);
-    ouTag[i].set(monitor::causeName(r.cause), tagColor);
+    ouTag[i].set(monitor::causeTag(r.cause), tagColor);
   }
 }
 

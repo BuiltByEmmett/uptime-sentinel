@@ -66,6 +66,7 @@ const char DASHBOARD[] PROGMEM = R"HTML(
 </div>
 <canvas id="g" width="480" height="90"></canvas>
 <div class="grid" id="tg"></div>
+<p id="hop"></p>
 <h2>UPTIME (ISP OUTAGES ONLY)</h2>
 <div class="grid">
 <div class="cell">24 HOURS<b id="p24">--</b></div>
@@ -83,7 +84,7 @@ const char DASHBOARD[] PROGMEM = R"HTML(
 <p id="foot"></p>
 <script>
 const $=i=>document.getElementById(i);
-const cls={ISP:'o',SLOW:'y',DNS:'y',WIFI:'m',LAN:'m',POWER:'m'};
+const cls={ISP:'o','ISP LOCAL':'o','ISP UPSTREAM':'o',SLOW:'y',DNS:'y',WIFI:'m',LAN:'m',POWER:'m'};
 const txt=(el,v)=>{el.textContent=v};
 const ms=v=>v<0?'--':v+' ms';
 function draw(h){const c=$('g'),x=c.getContext('2d'),W=c.width,H=c.height;x.clearRect(0,0,W,H);
@@ -102,7 +103,7 @@ const tg=$('tg');tg.textContent='';
 s.targets.forEach(t=>{const d=document.createElement('div');d.className='cell';
 d.textContent=t.name;const b=document.createElement('b');b.textContent=ms(t.ms);
 if(t.ms<0)b.className='o';d.appendChild(b);tg.appendChild(d)});
-draw(s.history);
+txt($('hop'),s.hop);draw(s.history);
 txt($('foot'),'v'+s.version+' · '+s.time+' · '+s.link);
 }catch(e){txt($('sub'),'Cannot reach the monitor')}}
 async function log(){try{const r=await(await fetch('/api/log')).json();
@@ -205,6 +206,28 @@ String duration(uint32_t seconds) {
   return text;
 }
 
+// Which of the first-hop cases applies, for the dashboard.
+String hopText() {
+  ping::HopInfo hop = ping::hopInfo();
+  String addr = IPAddress(hop.addr).toString();
+  switch (hop.state) {
+    case ping::HopState::ACTIVE:
+      return "First ISP hop " + addr + " answers pings: ISP outages are logged as ISP LOCAL "
+             "(that hop is down too) or ISP UPSTREAM (it still answers).";
+    case ping::HopState::NO_REPLY:
+      return "First ISP hop " + addr + " does not answer pings, so ISP outages are not split "
+             "into local and upstream.";
+    case ping::HopState::PRIVATE:
+      return "The hop after the router, " + addr + ", has a private address (probably a "
+             "second router), so ISP outages are not split into local and upstream.";
+    case ping::HopState::NONE:
+      return "No first ISP hop could be found, so ISP outages are not split into local and "
+             "upstream.";
+    default:
+      return "Looking for the first ISP hop...";
+  }
+}
+
 void handleRoot() {
   if (!allowed(false)) return;
   String page = html::pageStart("Uptime Sentinel");
@@ -225,6 +248,8 @@ void handleStatus() {
   if (monitor::activeEvent(cause, startMono)) {
     String lasted = duration(timekeeper::mono() - startMono);
     if (cause == Cause::ISP) detail = "ISP outage for " + lasted;
+    else if (cause == Cause::ISP_LOCAL) detail = "ISP outage (local: first hop down) for " + lasted;
+    else if (cause == Cause::ISP_UPSTREAM) detail = "ISP outage (upstream: first hop up) for " + lasted;
     else if (cause == Cause::WIFI || cause == Cause::LAN) detail = "No reply from the router for " + lasted;
     else if (cause == Cause::DNS) detail = "DNS lookups failing for " + lasted;
     else detail = "Slow or losing packets for " + lasted;
@@ -250,7 +275,9 @@ void handleStatus() {
     if (i) json += ",";
     json += "{\"name\":\"" + names[i] + "\",\"ms\":" + String(m.rtt[i]) + "}";
   }
-  json += "],\"pct24\":\"" + pct(s.pct24h) + "\",\"pct7\":\"" + pct(s.pct7d) + "\"";
+  if (m.hopActive) json += ",{\"name\":\"ISP HOP\",\"ms\":" + String(m.rtt[ping::HOP]) + "}";
+  json += "],\"hop\":\"" + hopText();
+  json += "\",\"pct24\":\"" + pct(s.pct24h) + "\",\"pct7\":\"" + pct(s.pct7d) + "\"";
   json += ",\"isp\":" + String(s.ispOutages);
   json += ",\"longest\":\"" + (s.longestSec ? duration(s.longestSec) : String("--")) + "\"";
   json += ",\"watching\":\"" + duration(s.watchingSec) + "\"";

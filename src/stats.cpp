@@ -26,11 +26,11 @@ float uptimePct(uint32_t window, uint32_t now, uint32_t since) {
   uint32_t down = 0;
   for (size_t i = 0; i < storage::count(); i++) {
     const storage::OutageRecord &r = storage::get(i);
-    if (r.cause != static_cast<uint8_t>(Cause::ISP)) continue;
+    if (!isIsp(static_cast<Cause>(r.cause))) continue;
     down += overlap(r.start, r.start + r.duration, from, now);
   }
   const monitor::State &m = monitor::state();
-  if (m.outage && m.cause == Cause::ISP) {
+  if (m.outage && isIsp(m.cause)) {
     down += overlap(timekeeper::toEpoch(m.outageStartMono), now, from, now);
   }
   if (down > span) down = span;
@@ -46,7 +46,7 @@ Stats compute() {
   s.longestSec = 0;
   for (size_t i = 0; i < storage::count(); i++) {
     const storage::OutageRecord &r = storage::get(i);
-    if (r.cause != static_cast<uint8_t>(Cause::ISP)) continue;
+    if (!isIsp(static_cast<Cause>(r.cause))) continue;
     s.ispOutages++;
     if (r.duration > s.longestSec) s.longestSec = r.duration;
   }

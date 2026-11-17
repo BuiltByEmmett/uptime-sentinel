@@ -71,7 +71,7 @@ void onOutageStart(Cause cause, uint32_t startMono) { storage::outageStarted(cau
 
 void onOutageEnd(Cause cause, uint32_t startMono, uint32_t endMono, bool recovered) {
   storage::outageEnded(cause, startMono, endMono);
-  if (cause == Cause::ISP) ispDownCarry += endMono - startMono;
+  if (isIsp(cause)) ispDownCarry += endMono - startMono;
   if (recovered) {
     // One Discord message per ISP outage, sent when the internet is back.
     if (ispDownCarry > 0) {
@@ -83,9 +83,10 @@ void onOutageEnd(Cause cause, uint32_t startMono, uint32_t endMono, bool recover
 
 void printRound(const ping::Round &r) {
   const char *const NAMES[ping::TARGETS] = {"router", settings::get().target[0].c_str(),
-                                            settings::get().target[1].c_str()};
+                                            settings::get().target[1].c_str(), "hop"};
   Serial.print("[ping]");
   for (int i = 0; i < ping::TARGETS; i++) {
+    if (i == ping::HOP && !r.hopActive) continue;
     if (r.rtt[i] >= 0) Serial.printf(" %s=%dms", NAMES[i], r.rtt[i]);
     else Serial.printf(" %s=--", NAMES[i]);
   }
@@ -139,6 +140,9 @@ void runCommand(const String &cmd) {
   if (cmd == "sim isp") {
     ping::setSim(ping::Sim::ISP);
     simName = " (simulated)";
+  } else if (cmd == "sim isplocal") {
+    ping::setSim(ping::Sim::ISPLOCAL);
+    simName = " (simulated)";
   } else if (cmd == "sim wifi") {
     ping::setSim(ping::Sim::WIFI);
     simName = " (simulated)";
@@ -160,7 +164,7 @@ void runCommand(const String &cmd) {
   } else if (cmd == "clearlog") {
     storage::clear();
   } else {
-    Serial.println("[cmd] commands: sim isp | sim wifi | sim slow | sim dns | sim off | log | stats | clearlog");
+    Serial.println("[cmd] commands: sim isp | sim isplocal | sim wifi | sim slow | sim dns | sim off | log | stats | clearlog");
     return;
   }
   Serial.printf("[cmd] ok: %s\n", cmd.c_str());
