@@ -48,7 +48,7 @@ constexpr char RELEASES_URL[] = "https://github.com/TradeSolana/uptime-sentinel/
 #endif
 constexpr char BOARD[] = BOARD_ENV;
 constexpr char BOARD_MARKER[] = "UPTIME-SENTINEL-BOARD:" BOARD_ENV ";";
-constexpr char VERSION[] = "1.2.0";
+constexpr char VERSION[] = "1.3.0";
 }  // namespace cfg
 
 constexpr uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
