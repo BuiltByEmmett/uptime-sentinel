@@ -1,5 +1,18 @@
 #include "screens.h"
 
+#include "board.h"
+
+#ifdef HEADLESS
+
+namespace screens {
+void show() {}
+void next() {}
+void action() {}
+void update() {}
+}  // namespace screens
+
+#else
+
 #include <math.h>
 
 #include "display.h"
@@ -23,29 +36,28 @@ constexpr int16_t STRIP_NAME_Y = 108;
 constexpr int16_t STRIP_VALUE_Y = 122;
 
 int8_t current = STATUS;
-Label title(6, 4, 180, &Font10, 10, LEFT);
+Label title(6, 4, 180, &Font10, CAP10, LEFT);
 
 // Bottom strip split into equal columns: a grey name over a value.
 void drawStripFrame(int columns) {
-  TFT_eSPI &tft = display::tft();
-  tft.drawFastHLine(0, STRIP_TOP, display::WIDTH, color::DIVIDER);
+  display::hline(0, STRIP_TOP, display::WIDTH, color::DIVIDER);
   int16_t colW = display::WIDTH / columns;
   for (int i = 1; i < columns; i++) {
-    tft.drawFastVLine(i * colW, STRIP_TOP + 1, display::HEIGHT - STRIP_TOP - 1, color::DIVIDER);
+    display::vline(i * colW, STRIP_TOP + 1, display::HEIGHT - STRIP_TOP - 1, color::DIVIDER);
   }
 }
 
 // ---------------------------------------------------------------- STATUS
 
-Label stWord(6, 26, 228, &Font36, 36, LEFT, 2);
-Label stLossName(122, 88, 34, &Font10, 10, LEFT);
-Label stLoss(160, 76, 74, &Font22, 22, RIGHT, 3);
-Label stName[3] = {Label(1, STRIP_NAME_Y, 78, &Font10, 10, CENTER, 1),
-                   Label(81, STRIP_NAME_Y, 78, &Font10, 10, CENTER, 1),
-                   Label(161, STRIP_NAME_Y, 78, &Font10, 10, CENTER, 1)};
-Label stValue[3] = {Label(1, STRIP_VALUE_Y, 78, &Font10, 10, CENTER),
-                    Label(81, STRIP_VALUE_Y, 78, &Font10, 10, CENTER),
-                    Label(161, STRIP_VALUE_Y, 78, &Font10, 10, CENTER)};
+Label stWord(6, 26, 228, &Font36, CAP36, LEFT, 2);
+Label stLossName(122, 88, 34, &Font10, CAP10, LEFT);
+Label stLoss(160, 76, 74, &Font22, CAP22, RIGHT, 3);
+Label stName[3] = {Label(1, STRIP_NAME_Y, 78, &Font10, CAP10, CENTER, 1),
+                   Label(81, STRIP_NAME_Y, 78, &Font10, CAP10, CENTER, 1),
+                   Label(161, STRIP_NAME_Y, 78, &Font10, CAP10, CENTER, 1)};
+Label stValue[3] = {Label(1, STRIP_VALUE_Y, 78, &Font10, CAP10, CENTER),
+                    Label(81, STRIP_VALUE_Y, 78, &Font10, CAP10, CENTER),
+                    Label(161, STRIP_VALUE_Y, 78, &Font10, CAP10, CENTER)};
 char stLatencyShown[8] = "";
 bool stLatencyDrawn = false;
 
@@ -56,8 +68,8 @@ void drawLatency(int16_t ms) {
   else snprintf(text, sizeof(text), "%d", ms > 999 ? 999 : ms);
   if (stLatencyDrawn && strcmp(text, stLatencyShown) == 0) return;
 
-  const int16_t baseline = display::PAD_TOP + 28;
-  TFT_eSprite &s = display::beginField(112, baseline + 4);
+  const int16_t baseline = display::PAD_TOP + CAP28;
+  TFT_eSprite &s = display::beginField(display::scaled(112), baseline + display::scaled(3));
   s.setTextDatum(L_BASELINE);
   s.setFreeFont(&Font28);
   s.setTextColor(color::TEXT);
@@ -65,8 +77,8 @@ void drawLatency(int16_t ms) {
   s.drawString(text, 0, baseline);
   s.setFreeFont(&Font10);
   s.setTextColor(color::LABEL);
-  s.drawString("ms", w + 5, baseline);
-  display::endField(6, 70 - display::PAD_TOP);
+  s.drawString("ms", w + display::scaled(5), baseline);
+  display::endField(display::px(6), display::py(70) - display::PAD_TOP);
 
   strlcpy(stLatencyShown, text, sizeof(stLatencyShown));
   stLatencyDrawn = true;
@@ -114,10 +126,17 @@ void updateStatus() {
 
 // --------------------------------------------------------------- LATENCY
 
-constexpr int BARS = 46;          // 3px bars with 2px gaps = 228px
-constexpr int16_t GRAPH_X = 6;
-constexpr int16_t GRAPH_TOP = 24;
-constexpr int16_t GRAPH_H = 72;
+// 46 bars across a 228-unit-wide, 72-unit-tall area. At 240x135 that is
+// exactly 3px bars with 2px gaps; larger screens get wider bars. These are
+// real pixels, worked out from the grid so the graph stays centred.
+constexpr int BARS = 46;
+constexpr int16_t BAR_GAP = 2;
+constexpr int16_t BAR_PITCH = (display::scaled(228) + BAR_GAP) / BARS;
+constexpr int16_t BAR_W = BAR_PITCH - BAR_GAP;
+constexpr int16_t GRAPH_W = BARS * BAR_PITCH - BAR_GAP;
+constexpr int16_t GRAPH_X = display::px(6) + (display::scaled(228) - GRAPH_W) / 2;
+constexpr int16_t GRAPH_TOP = display::py(24);
+constexpr int16_t GRAPH_H = display::py(96) - display::py(24);
 
 enum BarKind : uint8_t { BAR_EMPTY, BAR_OK, BAR_FAIL };
 
@@ -126,18 +145,18 @@ int16_t barHeight[BARS];
 uint8_t barKind[BARS];
 bool barsDrawn = false;
 
-Label grName[4] = {Label(1, STRIP_NAME_Y, 58, &Font10, 10, CENTER, 1),
-                   Label(61, STRIP_NAME_Y, 58, &Font10, 10, CENTER, 1),
-                   Label(121, STRIP_NAME_Y, 58, &Font10, 10, CENTER, 1),
-                   Label(181, STRIP_NAME_Y, 58, &Font10, 10, CENTER, 1)};
-Label grValue[4] = {Label(1, STRIP_VALUE_Y, 58, &Font10, 10, CENTER),
-                    Label(61, STRIP_VALUE_Y, 58, &Font10, 10, CENTER),
-                    Label(121, STRIP_VALUE_Y, 58, &Font10, 10, CENTER),
-                    Label(181, STRIP_VALUE_Y, 58, &Font10, 10, CENTER)};
+Label grName[4] = {Label(1, STRIP_NAME_Y, 58, &Font10, CAP10, CENTER, 1),
+                   Label(61, STRIP_NAME_Y, 58, &Font10, CAP10, CENTER, 1),
+                   Label(121, STRIP_NAME_Y, 58, &Font10, CAP10, CENTER, 1),
+                   Label(181, STRIP_NAME_Y, 58, &Font10, CAP10, CENTER, 1)};
+Label grValue[4] = {Label(1, STRIP_VALUE_Y, 58, &Font10, CAP10, CENTER),
+                    Label(61, STRIP_VALUE_Y, 58, &Font10, CAP10, CENTER),
+                    Label(121, STRIP_VALUE_Y, 58, &Font10, CAP10, CENTER),
+                    Label(181, STRIP_VALUE_Y, 58, &Font10, CAP10, CENTER)};
 
 void enterLatency() {
   drawStripFrame(4);
-  display::tft().drawFastHLine(GRAPH_X, GRAPH_TOP + GRAPH_H, BARS * 5 - 2, color::DIVIDER);
+  display::tft().drawFastHLine(GRAPH_X, GRAPH_TOP + GRAPH_H, GRAPH_W, color::DIVIDER);
   barsDrawn = false;
   for (int i = 0; i < 4; i++) {
     grName[i].invalidate();
@@ -198,11 +217,11 @@ void updateLatency() {
       if (h > GRAPH_H) h = GRAPH_H;
     }
     if (barsDrawn && h == barHeight[j] && kind[j] == barKind[j]) continue;
-    int16_t x = GRAPH_X + j * 5;
+    int16_t x = GRAPH_X + j * BAR_PITCH;
     // Two fills, empty part then bar, so the column never blinks to blank.
-    if (h < GRAPH_H) tft.fillRect(x, GRAPH_TOP, 3, GRAPH_H - h, color::BG);
+    if (h < GRAPH_H) tft.fillRect(x, GRAPH_TOP, BAR_W, GRAPH_H - h, color::BG);
     if (h > 0) {
-      tft.fillRect(x, GRAPH_TOP + GRAPH_H - h, 3, h,
+      tft.fillRect(x, GRAPH_TOP + GRAPH_H - h, BAR_W, h,
                    kind[j] == BAR_FAIL ? color::ORANGE : color::GREEN);
     }
     barHeight[j] = h;
@@ -234,19 +253,19 @@ size_t scroll = 0;
 bool ouFrameDrawn = false;   // row dividers are on screen
 bool ouEmptyDrawn = false;   // the "nothing yet" notice is on screen
 
-Label ouEmpty(6, 62, 228, &Font10, 10, CENTER);
-Label ouStamp[ROWS] = {Label(6, ROW_TOP + 9, 92, &Font10, 10, LEFT),
-                       Label(6, ROW_TOP + ROW_H + 9, 92, &Font10, 10, LEFT),
-                       Label(6, ROW_TOP + ROW_H * 2 + 9, 92, &Font10, 10, LEFT),
-                       Label(6, ROW_TOP + ROW_H * 3 + 9, 92, &Font10, 10, LEFT)};
-Label ouDuration[ROWS] = {Label(108, ROW_TOP + 9, 72, &Font10, 10, LEFT),
-                          Label(108, ROW_TOP + ROW_H + 9, 72, &Font10, 10, LEFT),
-                          Label(108, ROW_TOP + ROW_H * 2 + 9, 72, &Font10, 10, LEFT),
-                          Label(108, ROW_TOP + ROW_H * 3 + 9, 72, &Font10, 10, LEFT)};
-Label ouTag[ROWS] = {Label(194, ROW_TOP + 9, 40, &Font10, 10, RIGHT),
-                     Label(194, ROW_TOP + ROW_H + 9, 40, &Font10, 10, RIGHT),
-                     Label(194, ROW_TOP + ROW_H * 2 + 9, 40, &Font10, 10, RIGHT),
-                     Label(194, ROW_TOP + ROW_H * 3 + 9, 40, &Font10, 10, RIGHT)};
+Label ouEmpty(6, 62, 228, &Font10, CAP10, CENTER);
+Label ouStamp[ROWS] = {Label(6, ROW_TOP + 9, 92, &Font10, CAP10, LEFT),
+                       Label(6, ROW_TOP + ROW_H + 9, 92, &Font10, CAP10, LEFT),
+                       Label(6, ROW_TOP + ROW_H * 2 + 9, 92, &Font10, CAP10, LEFT),
+                       Label(6, ROW_TOP + ROW_H * 3 + 9, 92, &Font10, CAP10, LEFT)};
+Label ouDuration[ROWS] = {Label(108, ROW_TOP + 9, 72, &Font10, CAP10, LEFT),
+                          Label(108, ROW_TOP + ROW_H + 9, 72, &Font10, CAP10, LEFT),
+                          Label(108, ROW_TOP + ROW_H * 2 + 9, 72, &Font10, CAP10, LEFT),
+                          Label(108, ROW_TOP + ROW_H * 3 + 9, 72, &Font10, CAP10, LEFT)};
+Label ouTag[ROWS] = {Label(194, ROW_TOP + 9, 40, &Font10, CAP10, RIGHT),
+                     Label(194, ROW_TOP + ROW_H + 9, 40, &Font10, CAP10, RIGHT),
+                     Label(194, ROW_TOP + ROW_H * 2 + 9, 40, &Font10, CAP10, RIGHT),
+                     Label(194, ROW_TOP + ROW_H * 3 + 9, 40, &Font10, CAP10, RIGHT)};
 
 void invalidateRows() {
   for (int i = 0; i < ROWS; i++) {
@@ -292,7 +311,7 @@ void updateOutages() {
     if (ouEmptyDrawn) display::clearBody();
     ouEmptyDrawn = false;
     for (int i = 1; i < ROWS; i++) {
-      display::tft().drawFastHLine(6, ROW_TOP + i * ROW_H - 1, 228, color::DIVIDER);
+      display::hline(6, ROW_TOP + i * ROW_H - 1, 228, color::DIVIDER);
     }
     invalidateRows();
     ouFrameDrawn = true;
@@ -318,19 +337,19 @@ void updateOutages() {
 
 // ---------------------------------------------------------------- UPTIME
 
-Label upName24(6, 24, 112, &Font10, 10, LEFT);
-Label upName7(126, 24, 112, &Font10, 10, LEFT);
-Label upPct24(6, 42, 112, &Font22, 22, LEFT, 3);
-Label upPct7(126, 42, 112, &Font22, 22, LEFT, 3);
-Label upRowName[3] = {Label(6, 82, 104, &Font10, 10, LEFT),
-                      Label(6, 99, 104, &Font10, 10, LEFT),
-                      Label(6, 116, 104, &Font10, 10, LEFT)};
-Label upRowValue[3] = {Label(122, 82, 112, &Font10, 10, RIGHT),
-                       Label(122, 99, 112, &Font10, 10, RIGHT),
-                       Label(122, 116, 112, &Font10, 10, RIGHT)};
+Label upName24(6, 24, 112, &Font10, CAP10, LEFT);
+Label upName7(126, 24, 112, &Font10, CAP10, LEFT);
+Label upPct24(6, 42, 112, &Font22, CAP22, LEFT, 3);
+Label upPct7(126, 42, 112, &Font22, CAP22, LEFT, 3);
+Label upRowName[3] = {Label(6, 82, 104, &Font10, CAP10, LEFT),
+                      Label(6, 99, 104, &Font10, CAP10, LEFT),
+                      Label(6, 116, 104, &Font10, CAP10, LEFT)};
+Label upRowValue[3] = {Label(122, 82, 112, &Font10, CAP10, RIGHT),
+                       Label(122, 99, 112, &Font10, CAP10, RIGHT),
+                       Label(122, 116, 112, &Font10, CAP10, RIGHT)};
 
 void enterUptime() {
-  display::tft().drawFastHLine(0, 73, display::WIDTH, color::DIVIDER);
+  display::hline(0, 73, display::WIDTH, color::DIVIDER);
   upName24.invalidate();
   upName7.invalidate();
   upPct24.invalidate();
@@ -416,3 +435,5 @@ void update() {
 }
 
 }  // namespace screens
+
+#endif  // HEADLESS

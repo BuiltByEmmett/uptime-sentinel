@@ -1,4 +1,4 @@
-// Internet uptime monitor for the LilyGO / TENSTAR T-Display (ESP32).
+// Internet uptime monitor for ESP32 boards (see platformio.ini for targets).
 // Wires the modules together; the logic lives in the files named after it.
 #include <Arduino.h>
 #include <WiFi.h>
@@ -25,11 +25,12 @@ constexpr uint32_t RECONNECT_MS = 30000;
 uint32_t ispDownCarry = 0;  // ISP downtime in the current run of back-to-back outages
 const char *simName = "";
 
-// Both buttons held: show a countdown, wipe settings at five seconds.
-// Returns true when the countdown was abandoned and the screen needs redrawing.
+// Wipe gesture held (both buttons, or the only button): show a countdown and
+// wipe settings at five seconds. Returns true when the countdown was
+// abandoned and the screen needs redrawing.
 bool serviceWipe() {
   static bool overlay = false;
-  uint32_t held = buttons::bothHeldMs();
+  uint32_t held = buttons::wipeHeldMs();
   if (held >= cfg::WIPE_HOLD_MS) {
     display::message("RESET", "Settings wiped.", "Restarting...");
     settings::wipe();
@@ -38,7 +39,7 @@ bool serviceWipe() {
     delay(1200);
     ESP.restart();
   }
-  if (held >= 600) {
+  if (held >= buttons::wipeWarnMs()) {
     char line[28];
     snprintf(line, sizeof(line), "Keep holding: %us",
              static_cast<unsigned>((cfg::WIPE_HOLD_MS - held + 999) / 1000));

@@ -1,11 +1,8 @@
-// Board pins, timing constants and the colour palette.
+// Timing constants and the colour palette. Board pins live in board.h.
 #pragma once
 #include <Arduino.h>
 
 namespace cfg {
-constexpr uint8_t PIN_BTN1 = 0;    // next screen
-constexpr uint8_t PIN_BTN2 = 35;   // scroll log / change graph range
-
 constexpr uint32_t PING_INTERVAL_MS = 2000;
 constexpr uint32_t PING_TIMEOUT_MS = 1000;
 constexpr uint8_t FAIL_ROUNDS = 3;          // consecutive failed rounds before an outage
@@ -13,7 +10,7 @@ constexpr size_t LOG_CAPACITY = 200;        // outages kept on flash
 constexpr size_t HISTORY_ROUNDS = 1800;     // one hour of rounds kept in RAM
 constexpr size_t ROUNDS_5MIN = 150;
 
-constexpr uint32_t WIPE_HOLD_MS = 5000;     // both buttons held this long wipes settings
+constexpr uint32_t WIPE_HOLD_MS = 5000;     // wipe gesture held this long erases settings
 constexpr uint32_t FIRST_JOIN_TIMEOUT_MS = 30000;
 
 constexpr char AP_NAME[] = "UptimeMonitor-Setup";
