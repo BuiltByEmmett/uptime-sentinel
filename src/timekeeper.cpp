@@ -3,14 +3,14 @@
 #include <esp_timer.h>
 #include <time.h>
 
-#include "config.h"
+#include "settings.h"
 
 namespace timekeeper {
 
 void begin() {
   // SNTP keeps retrying in the background, so booting with no internet is
   // fine: the clock becomes valid whenever the first reply arrives.
-  configTzTime(cfg::TIMEZONE, "pool.ntp.org", "time.cloudflare.com", "time.google.com");
+  configTzTime(settings::get().tz.c_str(), "pool.ntp.org", "time.cloudflare.com", "time.google.com");
 }
 
 bool valid() { return time(nullptr) > 1700000000; }

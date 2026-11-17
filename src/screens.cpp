@@ -18,7 +18,10 @@ void update() {}
 #include "display.h"
 #include "monitor.h"
 #include "stats.h"
-#include "storage.h"
+#include <WiFi.h>
+
+#include "logview.h"
+#include "settings.h"
 #include "timekeeper.h"
 
 namespace screens {
@@ -36,6 +39,15 @@ constexpr int16_t STRIP_NAME_Y = 108;
 constexpr int16_t STRIP_VALUE_Y = 122;
 
 int8_t current = STATUS;
+
+uint16_t causeColor(Cause c) {
+  switch (c) {
+    case Cause::ISP: return color::ORANGE;
+    case Cause::SLOW:
+    case Cause::DNS: return color::YELLOW;
+    default: return color::LABEL;  // WIFI and POWER do not count against the ISP
+  }
+}
 Label title(6, 4, 180, &Font10, CAP10, LEFT);
 
 // Bottom strip split into equal columns: a grey name over a value.
@@ -97,13 +109,15 @@ void enterStatus() {
 }
 
 void updateStatus() {
-  static const char *const NAMES[3] = {"ROUTER", "1.1.1.1", "8.8.8.8"};
+  const char *const NAMES[3] = {"ROUTER", settings::targetLabel(0), settings::targetLabel(1)};
   const monitor::State &m = monitor::state();
   title.set("STATUS", color::LABEL);
 
-  if (!m.haveData) stWord.set("...", color::LABEL);
-  else if (m.outage) stWord.set("OFFLINE", color::ORANGE);
-  else stWord.set("ONLINE", color::GREEN);
+  uint16_t wordColor = color::GREEN;
+  if (!m.haveData) wordColor = color::LABEL;
+  else if (m.outage) wordColor = color::ORANGE;
+  else if (m.degraded) wordColor = color::YELLOW;
+  stWord.set(monitor::stateName(), wordColor);
 
   drawLatency(m.haveData ? m.internetMs : -1);
 
@@ -283,7 +297,7 @@ void enterOutages() {
 }
 
 void updateOutages() {
-  size_t total = storage::count();
+  size_t total = logview::count();
   if (scroll >= total) scroll = 0;
 
   char text[32];
@@ -325,13 +339,15 @@ void updateOutages() {
       ouTag[i].set("", color::TEXT);
       continue;
     }
-    const storage::OutageRecord &r = storage::get(idx);
-    bool isp = r.cause == static_cast<uint8_t>(Cause::ISP);
-    timekeeper::formatStamp(r.start, text, sizeof(text));
+    logview::Row r = logview::get(idx);
+    uint16_t tagColor = causeColor(r.cause);
+    if (r.active && r.start == 0) strlcpy(text, "NOW", sizeof(text));
+    else timekeeper::formatStamp(r.start, text, sizeof(text));
     ouStamp[i].set(text, color::TEXT);
+    // Something still in progress counts up in its own colour.
     timekeeper::formatDuration(r.duration, text, sizeof(text));
-    ouDuration[i].set(text, color::TEXT);
-    ouTag[i].set(isp ? "ISP" : "WIFI", isp ? color::ORANGE : color::LABEL);
+    ouDuration[i].set(text, r.active ? tagColor : color::TEXT);
+    ouTag[i].set(monitor::causeName(r.cause), tagColor);
   }
 }
 
@@ -375,7 +391,14 @@ void setPct(Label &label, float pct) {
 void updateUptime() {
   static const char *const NAMES[3] = {"ISP OUTAGES", "LONGEST", "WATCHING FOR"};
   stats::Stats s = stats::compute();
-  title.set("UPTIME", color::LABEL);
+  // The address of the web page lives here, for when uptime.local will not resolve.
+  char heading[32];
+  if (WiFi.status() == WL_CONNECTED) {
+    snprintf(heading, sizeof(heading), "UPTIME %s", WiFi.localIP().toString().c_str());
+  } else {
+    strlcpy(heading, "UPTIME", sizeof(heading));
+  }
+  title.set(heading, color::LABEL);
   upName24.set("24 HOURS", color::LABEL);
   upName7.set("7 DAYS", color::LABEL);
   setPct(upPct24, s.pct24h);

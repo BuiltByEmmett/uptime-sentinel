@@ -15,10 +15,10 @@
 #include "stats.h"
 #include "storage.h"
 #include "timekeeper.h"
+#include "web.h"
 
 namespace {
 
-constexpr char VERSION[] = "1.0.0";
 constexpr uint32_t REDRAW_MS = 250;
 constexpr uint32_t RECONNECT_MS = 30000;
 
@@ -43,7 +43,7 @@ bool serviceWipe() {
     char line[28];
     snprintf(line, sizeof(line), "Keep holding: %us",
              static_cast<unsigned>((cfg::WIPE_HOLD_MS - held + 999) / 1000));
-    display::message("RESET", "Wipe WiFi and webhook?", line, "Release to cancel");
+    display::message("RESET", "Wipe all settings?", line, "Release to cancel");
     overlay = true;
     return false;
   }
@@ -74,16 +74,23 @@ void onOutageEnd(Cause cause, uint32_t startMono, uint32_t endMono, bool recover
 }
 
 void printRound(const ping::Round &r) {
-  static const char *const NAMES[ping::TARGETS] = {"router", "1.1.1.1", "8.8.8.8"};
+  const char *const NAMES[ping::TARGETS] = {"router", settings::get().target[0].c_str(),
+                                            settings::get().target[1].c_str()};
   Serial.print("[ping]");
   for (int i = 0; i < ping::TARGETS; i++) {
     if (r.rtt[i] >= 0) Serial.printf(" %s=%dms", NAMES[i], r.rtt[i]);
     else Serial.printf(" %s=--", NAMES[i]);
   }
+  if (r.dns >= 0) Serial.printf(" dns=%s", r.dns ? "ok" : "FAIL");
   const monitor::State &m = monitor::state();
-  Serial.printf(" -> %s%s | %s\n", monitor::className(m.lastClass), simName,
-                m.outage ? (m.cause == Cause::ISP ? "OFFLINE (ISP)" : "OFFLINE (WIFI)")
-                         : "ONLINE");
+  Cause cause;
+  uint32_t startMono;
+  bool active = monitor::activeEvent(cause, startMono);
+  // The cause is only worth adding for an outage; SLOW and NO DNS say it already.
+  bool outage = active && m.outage;
+  Serial.printf(" -> %s%s | %s%s%s%s\n", monitor::className(m.lastClass), simName,
+                monitor::stateName(), outage ? " (" : "", outage ? monitor::causeName(cause) : "",
+                outage ? ")" : "");
 }
 
 void serviceWifi() {
@@ -128,7 +135,7 @@ void printLog() {
     char stamp[16], dur[16];
     timekeeper::formatStamp(r.start, stamp, sizeof(stamp));
     timekeeper::formatDuration(r.duration, dur, sizeof(dur));
-    Serial.printf("  %s  %-8s %s\n", stamp, dur, r.cause == 0 ? "ISP" : "WIFI");
+    Serial.printf("  %s  %-8s %s\n", stamp, dur, monitor::causeName(static_cast<Cause>(r.cause)));
   }
 }
 
@@ -148,6 +155,12 @@ void runCommand(const String &cmd) {
   } else if (cmd == "sim wifi") {
     ping::setSim(ping::Sim::WIFI);
     simName = " (simulated)";
+  } else if (cmd == "sim slow") {
+    ping::setSim(ping::Sim::SLOW);
+    simName = " (simulated)";
+  } else if (cmd == "sim dns") {
+    ping::setSim(ping::Sim::DNS);
+    simName = " (simulated)";
   } else if (cmd == "sim off") {
     ping::setSim(ping::Sim::NONE);
     simName = "";
@@ -160,7 +173,7 @@ void runCommand(const String &cmd) {
   } else if (cmd == "clearlog") {
     storage::clear();
   } else {
-    Serial.println("[cmd] commands: sim isp | sim wifi | sim off | log | stats | clearlog");
+    Serial.println("[cmd] commands: sim isp | sim wifi | sim slow | sim dns | sim off | log | stats | clearlog");
     return;
   }
   Serial.printf("[cmd] ok: %s\n", cmd.c_str());
@@ -184,7 +197,7 @@ void serviceSerial() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.printf("\n[boot] uptime-monitor %s\n", VERSION);
+  Serial.printf("\n[boot] uptime-sentinel %s\n", cfg::VERSION);
 
   buttons::begin();
   display::begin();
@@ -234,6 +247,7 @@ void setup() {
   monitor::Handlers handlers = {onOutageStart, onOutageEnd};
   monitor::begin(handlers);
   ping::begin();
+  web::begin();
   screens::show();
 }
 
@@ -248,6 +262,11 @@ void loop() {
   bool fresh = false;
   ping::Round round;
   while (ping::nextRound(round)) {
+    // WiFi takes a few seconds to join after power-on; do not count that as
+    // an outage. If it still has not joined after 20 seconds, it is one.
+    static bool everLinked = false;
+    everLinked = everLinked || round.linkUp;
+    if (!everLinked && round.monoSec < 20) continue;
     monitor::onRound(round);
     printRound(round);
     fresh = true;
@@ -257,6 +276,7 @@ void loop() {
   serviceWifi();
   serviceClock();
   serviceSerial();
+  web::loop();
 
   static uint32_t lastDraw = 0;
   if (fresh || millis() - lastDraw >= REDRAW_MS) {

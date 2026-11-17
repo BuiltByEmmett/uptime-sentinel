@@ -1,7 +1,8 @@
 """Read the monitor's serial log for a fixed time.
 
-usage: serial_read.py PORT SECONDS [--reset] [--send "cmd@delay" ...] [--until TEXT N]
+usage: serial_read.py PORT SECONDS [--reset] [--hold N] [--send "cmd@delay" ...] [--until TEXT N]
   --reset          pulse EN (via RTS) so the log starts from boot
+  --hold N         keep the board in reset for N seconds first (fakes a power cut)
   --send "x@5"     send line "x" five seconds after start (repeatable)
   --until TEXT N   stop early once TEXT has appeared N times
 """
@@ -35,6 +36,10 @@ def main():
     ser.dtr = False
     ser.rts = False
     ser.open()
+    if "--hold" in args:
+        ser.rts = True
+        time.sleep(float(args[args.index("--hold") + 1]))
+        ser.rts = False
     if "--reset" in args:
         ser.rts = True
         time.sleep(0.15)

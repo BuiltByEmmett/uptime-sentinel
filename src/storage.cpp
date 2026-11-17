@@ -11,6 +11,7 @@ namespace {
 constexpr char LOG_PATH[] = "/outages.bin";
 constexpr char TMP_PATH[] = "/outages.tmp";
 constexpr char OPEN_PATH[] = "/open.bin";
+constexpr char ALIVE_PATH[] = "/alive.bin";
 constexpr uint32_t LOG_MAGIC = 0x474C5055;   // "UPLG"
 constexpr uint32_t OPEN_MAGIC = 0x4E504F55;  // "UOPN"
 constexpr uint32_t MARKER_REFRESH_SEC = 60;
@@ -48,6 +49,11 @@ size_t pendingCount = 0;
 bool markerActive = false;
 OpenMarker marker;
 uint32_t markerWrittenMono = 0;
+
+// Heartbeat: the last time the monitor knew it was running.
+uint32_t lastAliveEpoch = 0;   // read at boot, 0 = none
+bool powerGapChecked = false;
+uint32_t aliveWrittenMono = 0;
 
 bool loadFrom(const char *path) {
   File f = LittleFS.open(path, "r");
@@ -113,12 +119,33 @@ void recoverInterruptedOutage() {
   if (!f) return;
   OpenMarker m;
   bool ok = f.read(reinterpret_cast<uint8_t *>(&m), sizeof(m)) == sizeof(m) &&
-            m.magic == OPEN_MAGIC && m.lastSeen >= m.start;
+            m.magic == OPEN_MAGIC && m.lastSeen >= m.start &&
+            m.cause <= static_cast<uint8_t>(Cause::POWER);
   f.close();
   LittleFS.remove(OPEN_PATH);
   if (!ok) return;
   Serial.println("[log] recovering an outage that was interrupted by a power loss");
-  append(m.start, m.lastSeen - m.start, m.cause == 0 ? Cause::ISP : Cause::WIFI);
+  append(m.start, m.lastSeen - m.start, static_cast<Cause>(m.cause));
+}
+
+void writeAlive() {
+  File f = LittleFS.open(ALIVE_PATH, "w");
+  if (!f) return;
+  uint32_t now = timekeeper::now();
+  f.write(reinterpret_cast<uint8_t *>(&now), sizeof(now));
+  f.close();
+  aliveWrittenMono = timekeeper::mono();
+}
+
+// Runs once, when the clock first becomes valid after boot: if the last
+// heartbeat is much older than this boot, the monitor was without power.
+void checkPowerGap() {
+  powerGapChecked = true;
+  uint32_t bootEpoch = timekeeper::toEpoch(0);
+  if (lastAliveEpoch == 0 || bootEpoch <= lastAliveEpoch) return;
+  uint32_t gap = bootEpoch - lastAliveEpoch;
+  if (gap < cfg::POWER_GAP_MIN_SEC || gap > 366UL * 86400) return;
+  append(lastAliveEpoch, gap, Cause::POWER);
 }
 
 }  // namespace
@@ -134,6 +161,15 @@ void begin() {
   LittleFS.remove(TMP_PATH);
   Serial.printf("[log] %u outages loaded\n", static_cast<unsigned>(recordCount));
   recoverInterruptedOutage();
+
+  File f = LittleFS.open(ALIVE_PATH, "r");
+  if (f) {
+    if (f.read(reinterpret_cast<uint8_t *>(&lastAliveEpoch), sizeof(lastAliveEpoch)) !=
+        sizeof(lastAliveEpoch)) {
+      lastAliveEpoch = 0;
+    }
+    f.close();
+  }
 }
 
 void loop() {
@@ -143,6 +179,14 @@ void loop() {
       append(timekeeper::toEpoch(p.startMono), p.endMono - p.startMono, p.cause);
     }
     pendingCount = 0;
+  }
+  if (mounted && timekeeper::valid()) {
+    if (!powerGapChecked) {
+      checkPowerGap();
+      writeAlive();
+    } else if (timekeeper::mono() - aliveWrittenMono >= cfg::ALIVE_INTERVAL_SEC) {
+      writeAlive();
+    }
   }
   if (markerActive && timekeeper::mono() - markerWrittenMono >= MARKER_REFRESH_SEC) {
     marker.lastSeen = timekeeper::now();

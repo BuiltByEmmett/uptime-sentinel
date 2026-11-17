@@ -1,21 +1,23 @@
-// ICMP echo to the gateway, 1.1.1.1 and 8.8.8.8, once per round, on its own
-// task so a slow reply never stalls the display or buttons.
+// One round every two seconds, on its own task so a slow reply never stalls
+// the display or buttons: ICMP echo to the gateway and the two internet
+// targets, plus a DNS lookup now and then.
 #pragma once
 #include <Arduino.h>
 
 namespace ping {
 
 constexpr int TARGETS = 3;
-enum Target { ROUTER = 0, CLOUDFLARE = 1, GOOGLE = 2 };
+enum Target { ROUTER = 0, TARGET1 = 1, TARGET2 = 2 };
 
 struct Round {
   int16_t rtt[TARGETS];  // milliseconds, -1 = no reply
   uint32_t monoSec;      // seconds since boot when the round started
   bool linkUp;           // WiFi association state when the round started
+  int8_t dns;            // 1 = lookup answered, 0 = failed, -1 = not checked this round
 };
 
 // Forces results, for testing classification without unplugging anything.
-enum class Sim : uint8_t { NONE, ISP, WIFI };
+enum class Sim : uint8_t { NONE, ISP, WIFI, SLOW, DNS };
 
 void begin();
 bool nextRound(Round &out);  // non-blocking; true if a finished round was returned

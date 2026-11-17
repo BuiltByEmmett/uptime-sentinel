@@ -1,4 +1,4 @@
-// Wall-clock time from NTP (America/New_York) plus a monotonic clock that
+// Wall-clock time from NTP (in the configured timezone) plus a monotonic clock that
 // works from the moment of boot, with or without internet.
 #pragma once
 #include <Arduino.h>

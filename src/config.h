@@ -10,11 +10,26 @@ constexpr size_t LOG_CAPACITY = 200;        // outages kept on flash
 constexpr size_t HISTORY_ROUNDS = 1800;     // one hour of rounds kept in RAM
 constexpr size_t ROUNDS_5MIN = 150;
 
+// DNS: one lookup every DNS_EVERY_ROUNDS rounds, every round while failing.
+constexpr uint32_t DNS_EVERY_ROUNDS = 15;
+constexpr uint32_t DNS_TIMEOUT_MS = 900;
+
+// SLOW: judged over the last minute of rounds.
+constexpr size_t SLOW_WINDOW_ROUNDS = 30;
+constexpr uint8_t SLOW_LOSS_ENTER_PCT = 20;
+constexpr uint8_t SLOW_LOSS_EXIT_PCT = 10;
+
+// POWER: the monitor notes the time once a minute; a longer silence found
+// at boot is logged as time spent without power.
+constexpr uint32_t ALIVE_INTERVAL_SEC = 60;
+constexpr uint32_t POWER_GAP_MIN_SEC = 120;
+
 constexpr uint32_t WIPE_HOLD_MS = 5000;     // wipe gesture held this long erases settings
 constexpr uint32_t FIRST_JOIN_TIMEOUT_MS = 30000;
 
 constexpr char AP_NAME[] = "UptimeMonitor-Setup";
-constexpr char TIMEZONE[] = "EST5EDT,M3.2.0,M11.1.0";  // America/New_York
+constexpr char MDNS_NAME[] = "uptime";      // http://uptime.local
+constexpr char VERSION[] = "1.1.0";
 }  // namespace cfg
 
 constexpr uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
@@ -29,6 +44,13 @@ constexpr uint16_t DIVIDER = rgb565(0x1C, 0x23, 0x2B);
 constexpr uint16_t DIM = rgb565(0x3A, 0x44, 0x4F);     // inactive page squares
 constexpr uint16_t GREEN = rgb565(0x3D, 0xDC, 0x84);
 constexpr uint16_t ORANGE = rgb565(0xFF, 0x8A, 0x3D);
+constexpr uint16_t YELLOW = rgb565(0xFF, 0xD2, 0x3D);  // degraded: slow or DNS trouble
 }  // namespace color
 
-enum class Cause : uint8_t { ISP = 0, WIFI = 1 };
+// What an entry in the outage log was. Stored on flash: never renumber.
+//   ISP    router answers, internet does not          (counts against uptime)
+//   WIFI   router does not answer
+//   SLOW   internet reachable but lossy or very slow
+//   DNS    internet reachable but name lookups fail
+//   POWER  the monitor itself was without power
+enum class Cause : uint8_t { ISP = 0, WIFI = 1, SLOW = 2, DNS = 3, POWER = 4 };
