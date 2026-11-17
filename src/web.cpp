@@ -734,7 +734,8 @@ void handleScreenshot() {
   if (!screens::capture(server.arg("screen").c_str())) {
     display::freeCapture();
     if (server.hasArg("screen") && server.arg("screen").length()) {
-      server.send(400, "text/plain", "screen must be status, latency, outages or uptime");
+      server.send(400, "text/plain", "screen must be status, latency, outages, uptime or sites "
+                                       "(sites needs a website in Settings)");
     } else {
       server.send(503, "text/plain", "Not enough memory for a screenshot right now");
     }

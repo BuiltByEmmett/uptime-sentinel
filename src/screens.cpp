@@ -23,6 +23,7 @@ bool capture(const char *) { return false; }
 #include "logview.h"
 #include "net.h"
 #include "settings.h"
+#include "sites.h"
 #include "timekeeper.h"
 
 namespace screens {
@@ -33,7 +34,11 @@ using display::Label;
 using display::LEFT;
 using display::RIGHT;
 
-enum Screen : int8_t { STATUS, LATENCY, OUTAGES, UPTIME, SCREEN_COUNT };
+enum Screen : int8_t { STATUS, LATENCY, OUTAGES, UPTIME, SITES, SCREEN_COUNT };
+
+// SITES is the last screen and only exists when a website is configured.
+// Settings are applied by a restart, so this never changes while running.
+int8_t pageCount() { return sites::any() ? SCREEN_COUNT : SCREEN_COUNT - 1; }
 
 constexpr int16_t STRIP_TOP = 103;  // divider row above the 32px bottom strip
 constexpr int16_t STRIP_NAME_Y = 108;
@@ -420,11 +425,104 @@ void updateUptime() {
   upRowValue[2].set(text, color::TEXT);
 }
 
+// ----------------------------------------------------------------- SITES
+
+// One row per configured website, in the row style of OUTAGES but five to a
+// screen: name, a CERT tag when the certificate is close to expiry, UP or
+// DOWN, and the latest response time.
+constexpr int SITE_ROWS = settings::MAX_SITES;
+constexpr int16_t SITE_ROW_H = 23;
+constexpr int16_t SITE_TEXT = 7;  // from the top of a row to the top of its capitals
+constexpr int16_t SITE_NAME_W = 100;
+
+#define SITE_COLUMN(x, w, align) \
+  {Label(x, ROW_TOP + SITE_TEXT, w, &Font10, CAP10, align), \
+   Label(x, ROW_TOP + SITE_ROW_H + SITE_TEXT, w, &Font10, CAP10, align), \
+   Label(x, ROW_TOP + SITE_ROW_H * 2 + SITE_TEXT, w, &Font10, CAP10, align), \
+   Label(x, ROW_TOP + SITE_ROW_H * 3 + SITE_TEXT, w, &Font10, CAP10, align), \
+   Label(x, ROW_TOP + SITE_ROW_H * 4 + SITE_TEXT, w, &Font10, CAP10, align)}
+Label siName[SITE_ROWS] = SITE_COLUMN(6, SITE_NAME_W, LEFT);
+Label siCert[SITE_ROWS] = SITE_COLUMN(110, 34, LEFT);
+Label siState[SITE_ROWS] = SITE_COLUMN(148, 34, LEFT);
+Label siMs[SITE_ROWS] = SITE_COLUMN(184, 50, RIGHT);
+#undef SITE_COLUMN
+
+// The name cut to what its column holds. The font has one width for every
+// character and covers plain ASCII only; anything else becomes a "?".
+void siteName(const String &name, char *out, size_t size) {
+  size_t fit = (display::px(6 + SITE_NAME_W) - display::px(6)) / Font10.glyph[0].xAdvance;
+  if (fit > size - 1) fit = size - 1;
+  size_t n = 0;
+  for (size_t i = 0; i < name.length() && n < fit; i++) {
+    uint8_t c = name[i];
+    if ((c & 0xC0) == 0x80) continue;  // the rest of a multi-byte character
+    out[n++] = (c >= 32 && c <= 126) ? c : '?';
+  }
+  out[n] = '\0';
+}
+
+void enterSites() {
+  for (int i = 1; i < SITE_ROWS; i++) {
+    display::hline(6, ROW_TOP + i * SITE_ROW_H - 1, 228, color::DIVIDER);
+  }
+  for (int i = 0; i < SITE_ROWS; i++) {
+    siName[i].invalidate();
+    siCert[i].invalidate();
+    siState[i].invalidate();
+    siMs[i].invalidate();
+  }
+}
+
+void updateSites() {
+  title.set("SITES", color::LABEL);
+  const settings::Config &conf = settings::get();
+  uint32_t now = timekeeper::now();
+  int row = 0;
+  char text[24];
+  // Configured sites only, so a gap in the Settings list leaves no gap here.
+  for (size_t i = 0; i < settings::MAX_SITES && row < SITE_ROWS; i++) {
+    if (conf.site[i].url.length() == 0) continue;
+    sites::View v;
+    sites::snapshot(i, v);
+
+    siteName(conf.site[i].name, text, sizeof(text));
+    siName[row].set(text, color::TEXT);
+
+    // Same rule as the alert: 14 days left or fewer, or already expired.
+    bool cert = false;
+    if (v.https && v.certExpiry != 0 && timekeeper::valid()) {
+      int32_t left = static_cast<int32_t>(v.certExpiry - now);
+      cert = left <= 0 || left / 86400 <= sites::CERT_WARN_DAYS;
+    }
+    siCert[row].set(cert ? "CERT" : "", color::YELLOW);
+
+    // The word carries the state; the colour only backs it up.
+    if (v.state == sites::State::DOWN) siState[row].set("DOWN", color::ORANGE);
+    else if (v.state == sites::State::UP) siState[row].set("UP", color::GREEN);
+    else siState[row].set("--", color::LABEL);
+
+    if (v.ms < 0) {
+      siMs[row].set("--", color::LABEL);
+    } else {
+      snprintf(text, sizeof(text), "%ldms", static_cast<long>(v.ms > 9999 ? 9999 : v.ms));
+      siMs[row].set(text, color::TEXT);
+    }
+    row++;
+  }
+  for (; row < SITE_ROWS; row++) {
+    siName[row].set("", color::TEXT);
+    siCert[row].set("", color::TEXT);
+    siState[row].set("", color::TEXT);
+    siMs[row].set("", color::TEXT);
+  }
+}
+
 void updateCurrent() {
   switch (current) {
     case STATUS: updateStatus(); break;
     case LATENCY: updateLatency(); break;
     case OUTAGES: updateOutages(); break;
+    case SITES: updateSites(); break;
     default: updateUptime(); break;
   }
 }
@@ -432,12 +530,13 @@ void updateCurrent() {
 // Draws every part of the current screen onto a background that is already
 // clear.
 void paint() {
-  display::drawHeader(current, SCREEN_COUNT);
+  display::drawHeader(current, pageCount());
   title.invalidate();
   switch (current) {
     case STATUS: enterStatus(); break;
     case LATENCY: enterLatency(); break;
     case OUTAGES: enterOutages(); break;
+    case SITES: enterSites(); break;
     default: enterUptime(); break;
   }
   updateCurrent();
@@ -451,12 +550,13 @@ void show() {
 }
 
 bool capture(const char *name) {
-  static const char *const NAMES[SCREEN_COUNT] = {"status", "latency", "outages", "uptime"};
+  static const char *const NAMES[SCREEN_COUNT] = {"status", "latency", "outages", "uptime",
+                                                  "sites"};
   bool asShown = name[0] == '\0';
   int8_t wanted = current;
   if (!asShown) {
     wanted = -1;
-    for (int8_t i = 0; i < SCREEN_COUNT; i++) {
+    for (int8_t i = 0; i < pageCount(); i++) {
       if (strcmp(name, NAMES[i]) == 0) wanted = i;
     }
     if (wanted < 0) return false;
@@ -482,7 +582,7 @@ bool capture(const char *name) {
 }
 
 void next() {
-  current = (current + 1) % SCREEN_COUNT;
+  current = (current + 1) % pageCount();
   show();
 }
 
