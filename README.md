@@ -1,5 +1,7 @@
 # Uptime Sentinel
 
+[![Build](https://github.com/TradeSolana/uptime-sentinel/actions/workflows/build.yml/badge.svg)](https://github.com/TradeSolana/uptime-sentinel/actions/workflows/build.yml)
+
 Uptime Sentinel is a tiny internet uptime monitor that runs on a $10 ESP32
 board. It pings your router and two public servers every two seconds, works
 out whether a failure is your ISP's fault or just your WiFi, keeps a log of
@@ -20,9 +22,10 @@ and leave it running.
 - [What it does](#what-it-does)
 - [What you need](#what-you-need)
 - [Step 1: Find your board](#step-1-find-your-board)
-- [Step 2: Install the tools](#step-2-install-the-tools)
-- [Step 3: Download this project](#step-3-download-this-project)
-- [Step 4: Flash the board](#step-4-flash-the-board)
+- [Step 2: Open the web flasher](#step-2-open-the-web-flasher)
+- [Step 3: Plug in the board](#step-3-plug-in-the-board)
+- [Step 4: Install](#step-4-install)
+- [Alternative: build it yourself with PlatformIO](#alternative-build-it-yourself-with-platformio)
 - [Step 5: Connect it to your WiFi](#step-5-connect-it-to-your-wifi)
 - [Step 6 (optional): Discord alerts](#step-6-optional-discord-alerts)
 - [The web dashboard](#the-web-dashboard)
@@ -65,7 +68,8 @@ All firmware here was written from scratch for this project.
 - One supported ESP32 board (see the table in Step 1). About $10.
 - A USB data cable that fits it. Some cheap cables are charge-only and will
   not work for flashing.
-- A computer running Windows, macOS or Linux, for the one-time flashing.
+- A computer running Windows, macOS or Linux with the Chrome or Edge
+  browser, for the one-time flashing.
 - A 2.4 GHz WiFi network. ESP32 boards cannot join 5 GHz-only networks.
 - Any USB charger or USB port to power it afterwards.
 
@@ -73,8 +77,8 @@ No soldering and no wiring.
 
 ## Step 1: Find your board
 
-Find your board in this table and note its **build name**. You will type it
-in Step 4.
+Find your board in this table and note its **build name**. You will pick it
+in Step 4, and it is part of the name of every firmware file.
 
 | Board | Build name | Screen | Controls | Status |
 |---|---|---|---|---|
@@ -104,28 +108,65 @@ Notes:
      back, save it as docs/photos/board.jpg, then replace this comment with:
      ![The T-Display board](docs/photos/board.jpg) -->
 
-## Step 2: Install the tools
+## Step 2: Open the web flasher
 
-You need two free programs.
+On a computer, open this page in **Chrome or Edge**:
 
-1. **Visual Studio Code**: download and install it from
-   <https://code.visualstudio.com>.
-2. **PlatformIO**: open VS Code, click the Extensions icon in the left bar
-   (four squares), search for `PlatformIO IDE`, and click **Install**. Wait
-   for it to finish, then restart VS Code when it asks.
+**<https://tradesolana.github.io/uptime-sentinel/>**
 
-If your computer does not recognise the board when you plug it in (no new
-COM port on Windows), install the USB driver for its chip:
+It installs the firmware straight from the browser. There is nothing to
+download or install on your computer. Firefox, Safari and phone browsers
+cannot do this, because they have no access to USB serial devices; use the
+PlatformIO route below if those are all you have.
+
+## Step 3: Plug in the board
+
+Plug the board into the computer with the USB cable.
+
+If the computer does not recognise it (no new COM port on Windows, nothing
+to choose in Step 4), install the USB driver for its chip and plug it in
+again:
 
 - **CH340 / CH9102** (most clones, CYD, TENSTAR): search for "CH343 driver"
   on the WCH website, <https://www.wch-ic.com>.
 - **CP210x** (some older boards): search for "CP210x VCP driver" on
   <https://www.silabs.com>.
 
-<details>
-<summary>Prefer the command line?</summary>
+## Step 4: Install
 
-With Python 3 installed:
+1. On the flasher page, pick your board. The build name from Step 1 is
+   shown under each one.
+2. Click **Install**. The browser shows a list of serial ports. Choose your
+   board's (usually named USB Serial, CH340, CH9102 or CP210x) and click
+   **Connect**.
+3. Confirm the install and wait about two minutes.
+4. When it finishes, the board restarts on its own and shows a **SETUP**
+   screen.
+
+If it cannot connect, hold the **BOOT** button on the board while you click
+Install, and let go once it starts writing.
+
+Installing this way on a board that already runs Uptime Sentinel resets its
+settings. To move to a newer version and keep them, see
+[Updating the firmware](#updating-the-firmware).
+
+## Alternative: build it yourself with PlatformIO
+
+Use this if you cannot use Chrome or Edge, want to change the code, or are
+adding a board. Otherwise skip to Step 5.
+
+<details>
+<summary>Build and flash with PlatformIO</summary>
+
+**1. Install the tools.** You need two free programs:
+
+- **Visual Studio Code**: download and install it from
+  <https://code.visualstudio.com>.
+- **PlatformIO**: open VS Code, click the Extensions icon in the left bar
+  (four squares), search for `PlatformIO IDE`, and click **Install**. Wait
+  for it to finish, then restart VS Code when it asks.
+
+Prefer the command line? With Python 3 installed:
 
 ```
 python -m venv .venv
@@ -136,37 +177,27 @@ python -m venv .venv
 Then use `.venv\Scripts\pio` (or `.venv/bin/pio`) wherever this guide says
 `pio`. On Windows, the included `pio.ps1` does the same and keeps
 PlatformIO's downloads on the project's drive instead of your user profile.
-</details>
 
-## Step 3: Download this project
-
-**Easy way:** on this page click the green **Code** button, then
-**Download ZIP**. Unzip it somewhere you can find it.
-
-**With Git:**
+**2. Download this project.** On the project page click the green **Code**
+button, then **Download ZIP**, and unzip it. Or with Git:
 
 ```
 git clone https://github.com/TradeSolana/uptime-sentinel.git
 ```
 
-Then in VS Code choose **File > Open Folder** and pick the `uptime-sentinel`
+In VS Code choose **File > Open Folder** and pick the `uptime-sentinel`
 folder. PlatformIO takes a minute to set itself up the first time.
 
-## Step 4: Flash the board
+**3. Flash the board.** Plug it in, open a terminal in VS Code
+(**Terminal > New Terminal**), and run this with your build name from
+Step 1 in place of `tdisplay`:
 
-1. Plug the board into your computer with the USB cable.
-2. In VS Code open a terminal: **Terminal > New Terminal**.
-3. Type this, replacing `tdisplay` with your build name from Step 1, and
-   press Enter:
+```
+pio run -e tdisplay -t upload
+```
 
-   ```
-   pio run -e tdisplay -t upload
-   ```
-
-4. Wait. The first run downloads the compiler and takes several minutes.
-   Later runs take under a minute.
-5. When you see `SUCCESS`, the board restarts on its own and shows a
-   **SETUP** screen.
+The first run downloads the compiler and takes several minutes. When you
+see `SUCCESS`, the board restarts and shows a **SETUP** screen.
 
 If the upload cannot find or connect to the board:
 
@@ -175,6 +206,14 @@ If the upload cannot find or connect to the board:
 - To pick the port yourself, add it to the command:
   `pio run -e tdisplay -t upload --upload-port COM7` (Windows) or
   `--upload-port /dev/ttyUSB0` (Linux) or `/dev/cu.usbserial-...` (macOS).
+
+Every build also writes `.pio/build/<build name>/firmware-full.bin`
+(bootloader, partition table and application in one file, flashed at
+offset 0) next to `firmware.bin` (the application alone, which is what the
+dashboard's update page takes). These are the two files published per
+board with each release.
+
+</details>
 
 ## Step 5: Connect it to your WiFi
 
@@ -319,8 +358,8 @@ about 1.1 MB and each board has two slots for it: 1.9 MB each on 4 MB
 boards, 3 MB or more on 16 MB boards.
 
 If an update ever leaves a board that will not start, flash it again over
-USB as in Steps 2 to 4. That always works, because the USB bootloader is
-never modified.
+USB as in Steps 2 to 4. That always works, because the chip's built-in USB
+loader cannot be overwritten.
 
 ## Using it
 
@@ -451,12 +490,13 @@ Good to know:
 
 | Problem | What to try |
 |---|---|
-| The board does not show up as a port | Try another USB cable (many are charge-only), then install the USB driver from Step 2. |
-| Upload fails at `Connecting...` | Hold the BOOT button while it says `Connecting...`. |
+| The board does not show up as a port | Try another USB cable (many are charge-only), then install the USB driver from Step 3. |
+| The flasher page says the browser cannot flash a board | Use Chrome or Edge on a computer. Phones, Firefox and Safari do not work. |
+| Installing fails to connect | Hold the BOOT button while you click Install (or while PlatformIO says `Connecting...`). |
 | My WiFi is not in the list | The ESP32 only sees 2.4 GHz networks. Tap "Scan for networks again", or type the name by hand. |
 | The setup page does not open | Stay connected to Uptime Sentinel and browse to `192.168.4.1`. Turn off mobile data if your phone keeps leaving the network. |
 | It keeps going back to SETUP | The WiFi password was wrong, or the network is 5 GHz only. |
-| Screen is blank after flashing | You may have flashed the wrong build name. Check Step 1 and flash again. |
+| Screen is blank after flashing | You may have installed the build for a different board. Check Step 1 and install again. |
 | Picture is upside down | In `platformio.ini`, add `-DTFT_ROTATION=3` to your board's `build_flags` and flash again. |
 | Colours look inverted or red and blue are swapped (CYD) | Try the other CYD build (`cyd` or `cyd2usb`). CYD clones ship with two different panels. |
 | No Discord messages | Check the webhook URL starts with `https://discord.com/api/webhooks/`. Re-enter it on the dashboard's Settings page. |
@@ -502,7 +542,8 @@ your Discord webhook without unplugging your modem.
 
 Each board is one block in `platformio.ini`; no code changes are needed.
 Copy the block closest to your hardware, give it a new name, and change the
-flags:
+flags. To have it built, released and offered on the web flasher, also add
+the name to the lists in `.github/workflows/` and to `flasher/boards.json`.
 
 | Flag | Meaning |
 |---|---|
@@ -543,10 +584,13 @@ real hardware.
 | `src/screens.cpp` | The four screens |
 | `src/buttons.cpp` | Buttons, touch and the wipe gesture |
 | `src/board.h` | Per-board options |
-| `tools/` | Font and certificate generators, serial log reader |
+| `tools/` | Font and certificate generators, serial log reader, release and flasher scripts |
+| `flasher/` | The web flasher page and its list of boards |
+| `.github/workflows/` | Builds every board on each push; publishes releases and the flasher on a version tag |
 
 Built with PlatformIO, the Arduino framework and
-[TFT_eSPI](https://github.com/Bodmer/TFT_eSPI).
+[TFT_eSPI](https://github.com/Bodmer/TFT_eSPI). The web flasher uses
+[ESP Web Tools](https://esphome.github.io/esp-web-tools/) (Apache 2.0).
 
 ## Licence and credits
 

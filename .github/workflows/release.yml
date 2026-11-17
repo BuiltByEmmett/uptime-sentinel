@@ -1,0 +1,138 @@
+name: Release
+
+# On a version tag (v1.2.0): build every board, publish a GitHub release
+# with two files per board, and deploy the web flasher to GitHub Pages.
+#
+#   uptime-sentinel-<board>-full.bin    bootloader + partitions + app, for USB
+#   uptime-sentinel-<board>-update.bin  app only, for the dashboard's update page
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Tag matches firmware version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compare the tag with src/config.h
+        run: |
+          version="$(python3 tools/make_flasher.py version)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match firmware version $version in src/config.h"
+            exit 1
+          fi
+
+  build:
+    name: ${{ matrix.env }}
+    needs: check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env:
+          - tdisplay
+          - tdisplay-4mb
+          - tdisplay-s3
+          - cyd
+          - cyd2usb
+          - esp32-headless
+          - esp32s3-headless
+          - esp32c3-headless
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v6
+        with:
+          path: ~/.platformio
+          key: pio-${{ matrix.env }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-${{ matrix.env }}-
+      - name: Install PlatformIO
+        run: pip install platformio==6.2.0
+      - name: Build
+        run: pio run -e ${{ matrix.env }}
+      - name: Collect release files
+        run: python tools/make_flasher.py collect .pio/build dist ${{ matrix.env }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: firmware-${{ matrix.env }}
+          path: dist/*.bin
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: firmware-*
+          path: dist
+          merge-multiple: true
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<EOF
+          ## Installing
+
+          **New board:** use the [web flasher](https://tradesolana.github.io/uptime-sentinel/) in Chrome or Edge on a computer. Or flash the \`-full.bin\` file for your board at offset 0 with esptool.
+
+          **Already running Uptime Sentinel 1.2.0 or later:** open the monitor's dashboard, choose **Update firmware**, and upload the \`-update.bin\` file for your board. Settings and the outage log are kept.
+
+          The board name in each file name is the build name from the README's board table.
+          EOF
+          gh release create "$GITHUB_REF_NAME" dist/*.bin \
+            --title "Uptime Sentinel ${GITHUB_REF_NAME#v}" \
+            --notes-file notes.md --generate-notes --verify-tag
+
+  flasher:
+    name: Deploy web flasher
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: firmware-*
+          path: dist
+          merge-multiple: true
+      - name: Fetch ESP Web Tools
+        # Served from our own site rather than a CDN. The archive must match
+        # the checksum npm publishes for this exact version.
+        env:
+          EWT_VERSION: 10.5.2
+          EWT_SHA512: i5qsHv1bnrb/9gmKEN7qIaDTMOMy6OctrgFVXStrU2s79erY2Z7IKydveNk0eDhQTarfwyR4eXspOUIF6kYawg==
+        run: |
+          curl -fsSL -o ewt.tgz "https://registry.npmjs.org/esp-web-tools/-/esp-web-tools-$EWT_VERSION.tgz"
+          actual="$(openssl dgst -sha512 -binary ewt.tgz | openssl base64 -A)"
+          if [ "$actual" != "$EWT_SHA512" ]; then
+            echo "::error::esp-web-tools archive does not match the expected checksum"
+            exit 1
+          fi
+          mkdir ewt && tar -xzf ewt.tgz -C ewt
+      - name: Build the site and its manifests
+        run: python3 tools/make_flasher.py site dist site ewt/package
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+          include-hidden-files: true
+      - id: deploy
+        uses: actions/deploy-pages@v5

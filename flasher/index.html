@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Install Uptime Sentinel</title>
+<meta name="description" content="Flash Uptime Sentinel onto an ESP32 board from your browser.">
+<style>
+:root{--bg:#0B0E11;--panel:#12171C;--line:#1C232B;--edge:#2A333D;--text:#E8EDF2;--label:#9AA4AF;
+--green:#3DDC84;--orange:#FF8A3D}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:ui-monospace,Menlo,Consolas,monospace;
+margin:0 auto;padding:28px 20px 60px;max-width:640px;line-height:1.5}
+h1{font-size:22px;color:var(--green);margin:0 0 6px}
+h2{font-size:13px;color:var(--label);font-weight:normal;letter-spacing:1px;margin:34px 0 10px;
+border-bottom:1px solid var(--line);padding-bottom:6px}
+p,li{color:var(--label);font-size:14px}
+a{color:var(--text)}
+b{color:var(--text);font-weight:600}
+.version{color:var(--label);font-size:13px;margin:0}
+fieldset{border:0;margin:0;padding:0}
+legend{position:absolute;left:-9999px}
+.board{display:flex;gap:12px;align-items:flex-start;background:var(--panel);
+border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin:8px 0;cursor:pointer}
+.board:hover{border-color:var(--edge)}
+.board:has(input:checked){border-color:var(--green)}
+.board:has(input:focus-visible){outline:2px solid var(--green);outline-offset:2px}
+.board input{margin:4px 0 0;accent-color:var(--green);width:16px;height:16px;flex:none}
+.board span{display:block;font-size:15px;color:var(--text)}
+.board small{display:block;font-size:13px;color:var(--label);margin-top:2px}
+.board code{color:var(--label);font-size:12px}
+.install{margin-top:22px}
+.install button{width:100%;padding:14px;background:var(--green);color:var(--bg);border:0;
+border-radius:6px;font:inherit;font-size:16px;font-weight:bold;cursor:pointer}
+.install button:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+.warn{color:var(--orange)}
+.note{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px}
+ol{padding-left:22px}
+li{margin:6px 0}
+</style>
+<script type="module" src="esp-web-tools/install-button.js"></script>
+</head>
+<body>
+<h1>Install Uptime Sentinel</h1>
+<p class="version">Version {{VERSION}} &middot; <a href="{{REPO}}">project page and guide</a></p>
+
+<p>This page puts Uptime Sentinel onto your board over USB. Nothing to
+install on your computer. It needs <b>Chrome or Edge on a computer</b>
+(Windows, macOS, Linux or ChromeOS). Phones, Firefox and Safari cannot talk
+to USB serial devices.</p>
+
+<h2>1. PLUG IN YOUR BOARD</h2>
+<p>Use a USB <b>data</b> cable. Some cheap cables only charge and will not
+work.</p>
+
+<h2>2. PICK YOUR BOARD</h2>
+<fieldset>
+<legend>Board</legend>
+{{BOARDS}}
+</fieldset>
+
+<h2>3. INSTALL</h2>
+<div class="install">
+<esp-web-install-button id="install" manifest="{{FIRST_MANIFEST}}">
+<button slot="activate">Install</button>
+<p slot="unsupported" class="note warn">This browser cannot flash a board.
+Open this page in Chrome or Edge on a computer.</p>
+<p slot="not-allowed" class="note warn">This page must be opened over
+HTTPS to use USB.</p>
+</esp-web-install-button>
+</div>
+<ol>
+<li>Click <b>Install</b> and choose your board's port in the box that
+appears. It is usually called <b>USB Serial</b>, <b>CH340</b>,
+<b>CH9102</b> or <b>CP210x</b>.</li>
+<li>Confirm, and wait about two minutes.</li>
+<li>When it finishes, the board restarts and shows a <b>SETUP</b> screen.
+Carry on with <a href="{{REPO}}#step-5-connect-it-to-your-wifi">Step 5:
+Connect it to your WiFi</a>.</li>
+</ol>
+
+<h2>IF SOMETHING GOES WRONG</h2>
+<ul>
+<li><b>No port in the list:</b> try another cable, then install the USB
+driver for your board's chip: CH340 / CH9102 from
+<a href="https://www.wch-ic.com">wch-ic.com</a> (search "CH343 driver"), or
+CP210x from <a href="https://www.silabs.com">silabs.com</a>.</li>
+<li><b>It cannot connect:</b> hold the board's <b>BOOT</b> button while you
+click Install, and let go once it starts writing.</li>
+<li><b>Blank screen afterwards:</b> the wrong board was picked. Pick another
+and install again.</li>
+</ul>
+
+<h2>ALREADY RUNNING UPTIME SENTINEL?</h2>
+<p class="note">Installing from this page resets the board's settings (WiFi,
+webhook, admin password). To move to a new version and keep everything,
+use <b>Update firmware</b> on the monitor's own dashboard instead, with the
+<code>-update.bin</code> file for your board from the
+<a href="{{REPO}}/releases">releases page</a>.</p>
+
+<script>
+const button = document.getElementById('install');
+document.querySelectorAll('input[name=board]').forEach(input => {
+  input.addEventListener('change', () => button.setAttribute('manifest', input.value));
+});
+</script>
+</body>
+</html>

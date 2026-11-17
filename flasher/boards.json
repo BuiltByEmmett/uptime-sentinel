@@ -1,0 +1,50 @@
+[
+  {
+    "env": "tdisplay-4mb",
+    "name": "LilyGO TTGO T-Display",
+    "detail": "240x135 screen, 2 buttons. Works on 4 MB and 16 MB boards and on clones such as TENSTAR. Pick this if you are not sure.",
+    "chipFamily": "ESP32"
+  },
+  {
+    "env": "tdisplay",
+    "name": "LilyGO TTGO T-Display, 16 MB flash",
+    "detail": "Same board, for the 16 MB version only. Leaves more room for the outage log.",
+    "chipFamily": "ESP32"
+  },
+  {
+    "env": "tdisplay-s3",
+    "name": "LilyGO T-Display-S3",
+    "detail": "320x170 screen, 2 buttons.",
+    "chipFamily": "ESP32-S3"
+  },
+  {
+    "env": "cyd",
+    "name": "Cheap Yellow Display (ESP32-2432S028R), one USB port",
+    "detail": "320x240 touch screen.",
+    "chipFamily": "ESP32"
+  },
+  {
+    "env": "cyd2usb",
+    "name": "Cheap Yellow Display with two USB ports",
+    "detail": "320x240 touch screen. If the colours look wrong, install the one-port version instead.",
+    "chipFamily": "ESP32"
+  },
+  {
+    "env": "esp32-headless",
+    "name": "Any ESP32 dev board, no screen",
+    "detail": "Dashboard, log and Discord alerts only.",
+    "chipFamily": "ESP32"
+  },
+  {
+    "env": "esp32s3-headless",
+    "name": "Any ESP32-S3 dev board, no screen",
+    "detail": "Dashboard, log and Discord alerts only.",
+    "chipFamily": "ESP32-S3"
+  },
+  {
+    "env": "esp32c3-headless",
+    "name": "Any ESP32-C3 dev board, no screen",
+    "detail": "Dashboard, log and Discord alerts only.",
+    "chipFamily": "ESP32-C3"
+  }
+]

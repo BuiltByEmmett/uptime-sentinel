@@ -1,0 +1,46 @@
+name: Build
+
+# Compiles every board on each push and pull request, so a change that
+# breaks one of them is caught straight away.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.env }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env:
+          - tdisplay
+          - tdisplay-4mb
+          - tdisplay-s3
+          - cyd
+          - cyd2usb
+          - esp32-headless
+          - esp32s3-headless
+          - esp32c3-headless
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v6
+        with:
+          path: ~/.platformio
+          key: pio-${{ matrix.env }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-${{ matrix.env }}-
+      - name: Install PlatformIO
+        run: pip install platformio==6.2.0
+      - name: Build
+        run: pio run -e ${{ matrix.env }}
