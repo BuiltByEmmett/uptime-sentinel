@@ -9,6 +9,7 @@
 #include <math.h>
 
 #include "config.h"
+#include "daily.h"
 #include "display.h"
 #include "html.h"
 #include "logview.h"
@@ -77,6 +78,22 @@ const char DASHBOARD[] PROGMEM = R"HTML(
 <div class="cell">LONGEST<b id="long">--</b></div>
 <div class="cell">DNS<b id="dns">--</b></div>
 </div>
+<h2>LAST 90 DAYS (ISP DOWNTIME PER DAY)</h2>
+<style>
+#cal{display:grid;grid-template-rows:repeat(7,auto);grid-auto-flow:column;grid-auto-columns:1fr;gap:3px;margin-top:10px}
+.d{aspect-ratio:1;padding:0;margin:0;width:auto;border:1px solid #2A333D;border-radius:3px;background:#12171C;position:relative;display:block}
+.d::after{content:'';position:absolute;inset:0;margin:auto;border-radius:2px}
+.l1::after{width:25%;height:25%;background:#FFD23D}
+.l2::after{width:50%;height:50%;background:#FFB03D}
+.l3::after{width:75%;height:75%;background:#FF8A3D}
+.l4::after{width:100%;height:100%;background:#FF5A3D}
+.ln{border-style:dashed;opacity:.45}
+.d:focus{outline:2px solid #E8EDF2}
+.k{display:inline-block;width:13px;height:13px;vertical-align:-2px;margin:0 4px 0 10px}
+</style>
+<div id="cal"></div>
+<p id="calt" aria-live="polite">Each column is a week, oldest on the left. Today is the last square. Point at or tap a day.</p>
+<p style="margin-top:-6px"><span class="d k" style="margin-left:0"></span>none<span class="d l1 k"></span>under 1m<span class="d l2 k"></span>under 10m<span class="d l3 k"></span>under 1h<span class="d l4 k"></span>1h or more<span class="d ln k"></span>not watching</p>
 <h2>OUTAGE LOG</h2>
 <table><thead><tr><th>Started</th><th>Lasted</th><th>Cause</th></tr></thead>
 <tbody id="log"></tbody></table>
@@ -116,7 +133,24 @@ r.forEach(e=>{const tr=b.insertRow();txt(tr.insertCell(),e.start);
 const d=tr.insertCell();txt(d,e.duration+(e.active?' (ongoing)':''));
 const c=tr.insertCell();txt(c,e.cause+(e.newip?' \u00b7 new IP':''));c.className=cls[e.cause]||'m';
 if(e.active)d.className=cls[e.cause]||'m'})}catch(e){}}
-status();log();setInterval(status,2000);setInterval(log,10000);
+const dur=s=>s<60?s+'s':s<3600?Math.floor(s/60)+'m '+s%60+'s':Math.floor(s/3600)+'h '+Math.floor(s%3600/60)+'m';
+async function cal(){try{const r=await(await fetch('/api/days')).json();
+const c=$('cal');c.textContent='';
+if(!r.today){txt($('calt'),'The calendar starts once the clock has been set.');return}
+const m={};r.days.forEach(d=>m[d[0]]=d);
+const first=r.today-89,off=new Date(first*864e5).getUTCDay();
+for(let i=0;i<off;i++)c.appendChild(document.createElement('i'));
+for(let d=first;d<=r.today;d++){const e=m[d],b=document.createElement('button');b.type='button';
+const date=new Date(d*864e5).toLocaleDateString(undefined,{timeZone:'UTC',weekday:'short',month:'short',day:'numeric'});
+let lv,t;
+if(!r.since||d<r.since){lv='n';t=date+': not watching yet'}
+else if(!e){lv=0;t=date+': no ISP downtime'}
+else{lv=e[1]<60?1:e[1]<600?2:e[1]<3600?3:4;
+t=date+': down '+dur(e[1])+(e[2]?' in '+e[2]+' outage'+(e[2]==1?'':'s'):', carried over from the day before')}
+b.className='d l'+lv;b.title=t;b.setAttribute('aria-label',t);
+b.onclick=b.onfocus=b.onmouseenter=()=>txt($('calt'),t);c.appendChild(b)}
+}catch(e){}}
+status();log();cal();setInterval(status,2000);setInterval(log,10000);setInterval(cal,60000);
 </script>)HTML";
 
 // Only answer requests addressed to this device by its own name or IP, and
@@ -329,6 +363,28 @@ void handleLog() {
   chunk += "]";
   server.sendContent(chunk);
   server.sendContent("");
+}
+
+// The uptime calendar: [day, seconds down, outages] for each day that had
+// ISP downtime. Days are counted from 1970-01-01 in the monitor's timezone.
+void handleDays() {
+  if (!allowed(false)) return;
+  static daily::Entry days[daily::DAYS];
+  bool clock = timekeeper::valid();
+  size_t n = clock ? daily::collect(days, daily::DAYS) : 0;
+  String json = "{\"today\":";
+  json += clock ? daily::dayOf(timekeeper::now()) : 0;
+  json += ",\"since\":";
+  json += clock && settings::since() ? daily::dayOf(settings::since()) : 0;
+  json += ",\"days\":[";
+  for (size_t i = 0; i < n; i++) {
+    if (i) json += ",";
+    json += "[" + String(days[i].day) + "," + String(days[i].downSec) + "," +
+            String(days[i].outages) + "]";
+  }
+  json += "]}";
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json", json);
 }
 
 void handleCsv() {
@@ -802,6 +858,7 @@ void begin() {
   server.on("/", HTTP_GET, handleRoot);
   server.on("/api/status", HTTP_GET, handleStatus);
   server.on("/api/log", HTTP_GET, handleLog);
+  server.on("/api/days", HTTP_GET, handleDays);
   server.on("/log.csv", HTTP_GET, handleCsv);
   server.on("/ip", HTTP_GET, handleIp);
   server.on("/settings", HTTP_GET, handleSettingsGet);

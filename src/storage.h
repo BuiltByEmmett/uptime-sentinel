@@ -17,6 +17,7 @@ struct OutageRecord {
 constexpr uint8_t FLAG_NEW_ADDRESS = 0x01;  // the public IP was different afterwards
 
 void begin();
+bool available();  // the filesystem mounted
 void loop();  // flushes outages that ended before the clock was set
 
 void outageStarted(Cause cause, uint32_t startMono);

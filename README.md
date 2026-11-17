@@ -302,6 +302,13 @@ browser on any phone or computer on the same network.
   are being split into ISP LOCAL and ISP UPSTREAM (see
   [How outages are classified](#how-outages-are-classified)).
 - **Uptime:** the same figures as the UPTIME screen.
+- **Last 90 days:** a calendar with one square per day. The mark inside a
+  square grows and darkens with that day's ISP downtime (none, under a
+  minute, under 10 minutes, under an hour, an hour or more), so it reads
+  without relying on colour. Point at or tap a square for the date, the
+  downtime and the number of outages. The daily totals are kept on flash
+  separately from the outage log, so a bad week that pushes old entries out
+  of the 200-entry log does not empty the calendar.
 - **Outage log:** all 200 entries, with anything still in progress at the
   top.
 - **Download log (CSV):** every entry with full date, time and duration in
@@ -644,6 +651,8 @@ Type a command and press Enter:
 | `sim newip` | Pretend the next public IP lookup returns `203.0.113.7`, to test the public IP log. The lookup after that logs the change back |
 | `clearlog` | Erase the outage log |
 | `clearip` | Erase the public IP log |
+| `sim days` | Add made-up downtime to nine days of the calendar, to see the shading |
+| `cleardays` | Erase the calendar and rebuild it from the outage log |
 
 `sim isp` followed by `sim off` a few seconds later is the easy way to test
 your Discord webhook without unplugging your modem.
@@ -684,6 +693,7 @@ real hardware.
 | `src/net.cpp` | The network link: WiFi, plus Ethernet on boards that have it |
 | `src/monitor.cpp` | Outage, SLOW and DNS logic; latency history |
 | `src/storage.cpp` | Outage log and power heartbeat on LittleFS |
+| `src/daily.cpp` | Uptime calendar: ISP downtime per day for 90 days, on LittleFS |
 | `src/logview.cpp` | The log as displayed, with the ongoing event on top |
 | `src/web.cpp` | Web dashboard, JSON API, CSV export, public IP page, settings page, admin login, firmware update, screenshots |
 | `src/html.cpp` | Page styling and form fields shared with the setup portal |

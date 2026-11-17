@@ -7,6 +7,7 @@
 #include "alerts.h"
 #include "buttons.h"
 #include "config.h"
+#include "daily.h"
 #include "display.h"
 #include "monitor.h"
 #include "net.h"
@@ -172,8 +173,12 @@ void runCommand(const String &cmd) {
     pubip::simulateChange();
   } else if (cmd == "clearip") {
     pubip::clear();
+  } else if (cmd == "sim days") {
+    daily::simulate();
+  } else if (cmd == "cleardays") {
+    daily::clear();
   } else {
-    Serial.println("[cmd] commands: sim isp | sim isplocal | sim wifi | sim slow | sim dns | sim newip | sim off | log | stats | clearlog | clearip");
+    Serial.println("[cmd] commands: sim isp | sim isplocal | sim wifi | sim slow | sim dns | sim newip | sim days | sim off | log | stats | clearlog | clearip | cleardays");
     return;
   }
   Serial.printf("[cmd] ok: %s\n", cmd.c_str());
@@ -207,6 +212,7 @@ void setup() {
   display::message("UPTIME SENTINEL", "Starting...");
   settings::begin();
   storage::begin();
+  daily::begin();
 
   // Boards with a wired port can run on the cable alone; everything else
   // needs WiFi details before it can do anything.
@@ -278,6 +284,7 @@ void loop() {
   }
 
   storage::loop();
+  daily::loop();
   net::loop();
   serviceClock();
   serviceSerial();

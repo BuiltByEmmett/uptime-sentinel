@@ -2,6 +2,7 @@
 
 #include <LittleFS.h>
 
+#include "daily.h"
 #include "monitor.h"
 #include "timekeeper.h"
 
@@ -99,6 +100,7 @@ void append(uint32_t start, uint32_t duration, Cause cause) {
   r.start = start;
   r.duration = duration;
   r.cause = static_cast<uint8_t>(cause);
+  if (isIsp(cause)) daily::add(start, duration);
 
   char stamp[16], dur[16];
   timekeeper::formatStamp(start, stamp, sizeof(stamp));
@@ -231,6 +233,8 @@ void outageEnded(Cause cause, uint32_t startMono, uint32_t endMono) {
     LittleFS.remove(OPEN_PATH);
   }
 }
+
+bool available() { return mounted; }
 
 size_t count() { return recordCount; }
 
