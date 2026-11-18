@@ -38,7 +38,7 @@ constexpr uint32_t FIRST_JOIN_TIMEOUT_MS = 30000;
 
 constexpr char AP_NAME[] = "Uptime Sentinel";
 constexpr char MDNS_NAME[] = "uptime";      // http://uptime.local
-constexpr char RELEASES_URL[] = "https://github.com/TradeSolana/uptime-sentinel/releases";
+constexpr char RELEASES_URL[] = "https://github.com/BuiltByEmmett/uptime-sentinel/releases";
 
 // Which platformio.ini environment this firmware was built for. Every image
 // carries BOARD_MARKER, and the update page refuses a file without the

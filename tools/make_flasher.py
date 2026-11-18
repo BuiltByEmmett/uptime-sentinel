@@ -24,7 +24,7 @@ import shutil
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REPO = "https://github.com/TradeSolana/uptime-sentinel"
+REPO = "https://github.com/BuiltByEmmett/uptime-sentinel"
 
 
 def boards():

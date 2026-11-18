@@ -85,7 +85,7 @@ jobs:
           cat > notes.md <<EOF
           ## Installing
 
-          **New board:** use the [web flasher](https://tradesolana.github.io/uptime-sentinel/) in Chrome or Edge on a computer. Or flash the \`-full.bin\` file for your board at offset 0 with esptool.
+          **New board:** use the [web flasher](https://builtbyemmett.github.io/uptime-sentinel/) in Chrome or Edge on a computer. Or flash the \`-full.bin\` file for your board at offset 0 with esptool.
 
           **Already running Uptime Sentinel 1.2.0 or later:** open the monitor's dashboard, choose **Update firmware**, and upload the \`-update.bin\` file for your board. Settings and the outage log are kept.
 
