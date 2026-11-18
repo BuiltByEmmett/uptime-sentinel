@@ -1,6 +1,6 @@
 # Uptime Sentinel
 
-[![Build](https://github.com/TradeSolana/uptime-sentinel/actions/workflows/build.yml/badge.svg)](https://github.com/TradeSolana/uptime-sentinel/actions/workflows/build.yml)
+[![Build](https://github.com/BuiltByEmmett/uptime-sentinel/actions/workflows/build.yml/badge.svg)](https://github.com/BuiltByEmmett/uptime-sentinel/actions/workflows/build.yml)
 
 Uptime Sentinel is a tiny internet uptime monitor that runs on a $10 ESP32
 board. It pings your router and two public servers every two seconds, works
@@ -135,7 +135,7 @@ Notes:
 
 On a computer, open this page in **Chrome or Edge**:
 
-**<https://tradesolana.github.io/uptime-sentinel/>**
+**<https://builtbyemmett.github.io/uptime-sentinel/>**
 
 It installs the firmware straight from the browser. There is nothing to
 download or install on your computer. Firefox, Safari and phone browsers
@@ -205,7 +205,7 @@ PlatformIO's downloads on the project's drive instead of your user profile.
 button, then **Download ZIP**, and unzip it. Or with Git:
 
 ```
-git clone https://github.com/TradeSolana/uptime-sentinel.git
+git clone https://github.com/BuiltByEmmett/uptime-sentinel.git
 ```
 
 In VS Code choose **File > Open Folder** and pick the `uptime-sentinel`
@@ -651,7 +651,7 @@ be installed from the dashboard.
 2. Open the dashboard and click **Update firmware**. The page shows the
    version you are running and your board's build name.
 3. Follow the link to the
-   [releases page](https://github.com/TradeSolana/uptime-sentinel/releases)
+   [releases page](https://github.com/BuiltByEmmett/uptime-sentinel/releases)
    and download the file for your board that ends in `-update.bin`, for
    example `uptime-sentinel-tdisplay-update.bin`.
 4. Choose that file on the update page and click **Upload and install**.
